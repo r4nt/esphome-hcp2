@@ -20,14 +20,13 @@ Offload the timing-sensitive and continuous polling HCP2 communication to the LP
 ```text
 esphome-hcp2/
 ├── lp-firmware/                # Rust crate for the LP Core
-│   ├── Cargo.toml              # Dependencies: rmodbus, riscv, critical-section
+│   ├── Cargo.toml              # Dependencies: rmodbus, esp-lp-hal
 │   ├── .cargo/
 │   │   └── config.toml         # Target configuration (riscv32imac-unknown-none-elf)
 │   ├── build.rs                # Linker script generation
 │   ├── memory.x                # Linker script for LP RAM layout
 │   └── src/
 │       ├── main.rs             # Entry point, main loop
-│       ├── uart.rs             # Minimal LP UART driver (RX/TX ring buffers)
 │       ├── protocol.rs         # HCP2 state machine using rmodbus
 │       ├── shared.rs           # Shared memory structs (repr(C)) & Spinlock
 │       └── registers.rs        # Register definitions from PROTOCOL.md
@@ -63,11 +62,12 @@ Defines the interface between HP and LP cores. Must be `#[repr(C)]` and aligned.
     }
     ```
 
-### B. LP UART Driver (`src/uart.rs`)
-Since standard HALs might be too heavy or unavailable for the LP core context:
-*   Direct access to LP_UART registers.
-*   **Polling Mode:** For simplicity in the initial implementation, or ISR-based if efficient enough.
-*   **Functions:** `init()`, `read_byte()`, `write_bytes()`, `flush()`.
+### B. LP UART (`src/main.rs`)
+We will use the `esp-lp-hal` crate which provides high-level drivers for the LP peripherals, including UART.
+
+*   **Crate:** `esp-lp-hal`
+*   **Usage:** Configure `LpUart` with the correct baud rate (57600) and pins.
+*   **Mode:** Blocking or polling mode as provided by the HAL.
 
 ### C. Protocol Logic (`src/protocol.rs`)
 Uses `rmodbus` in `no_std` mode.
