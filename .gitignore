@@ -18,3 +18,7 @@ Cargo.lock
 # Generated Files
 
 components/hcp_bridge/shared_data.h
+
+components/hcp_bridge/hcp2-lp.bin
+
+

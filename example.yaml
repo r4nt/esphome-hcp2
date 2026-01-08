@@ -1,0 +1,53 @@
+# Example configuration for testing HCP2 on ESP32-C6
+#
+# AUTOMATION:
+# The Rust firmware is automatically built and converted to a binary
+# whenever you run 'esphome compile' or 'esphome run', provided
+# you have the Rust toolchain installed.
+#
+# WIRING:
+# ESP32-C6 GPIO 4 (RX) -> HCP Bus TX
+# ESP32-C6 GPIO 5 (TX) -> HCP Bus RX
+
+esphome:
+  name: hcp2-test
+  friendly_name: HCP2 Test
+
+esp32:
+  board: esp32-c6-devkitc-1
+  variant: esp32c6
+  framework:
+    type: esp-idf
+
+# Load the local component from the components/ directory
+external_components:
+  - source:
+      type: local
+      path: components
+
+logger:
+  level: DEBUG
+
+api:
+ota:
+  - platform: esphome
+
+# Main bridge component that starts the LP core
+hcp_bridge:
+  id: hcp_hub
+
+cover:
+  - platform: hcp_bridge
+    name: "Garage Door"
+    hcp_bridge_id: hcp_hub
+
+switch:
+  - platform: hcp_bridge
+    name: "Garage Light"
+    hcp_bridge_id: hcp_hub
+    type: light
+
+  - platform: hcp_bridge
+    name: "Garage Vent"
+    hcp_bridge_id: hcp_hub
+    type: vent
