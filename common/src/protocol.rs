@@ -17,7 +17,7 @@ impl Hcp2Protocol {
         }
     }
 
-    pub fn process_write_9d31(&mut self, regs: &[u16], shared: &mut SharedData) {
+    pub fn handle_status_update(&mut self, regs: &[u16], shared: &mut SharedData) {
         if regs.len() < 9 {
             return;
         }
@@ -32,7 +32,7 @@ impl Hcp2Protocol {
         shared.light_on = (regs[6] & 0x10) != 0;
     }
 
-    pub fn process_write_9c41(&mut self, regs: &[u16]) {
+    pub fn handle_sync_counter(&mut self, regs: &[u16]) {
         if regs.len() < 1 {
             return;
         }
@@ -98,13 +98,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_process_write_9d31() {
+    fn test_handle_status_update() {
         let mut proto = Hcp2Protocol::new();
         let mut shared = SharedData::default();
         
         // Example from PROTOCOL.md: 0x1635 (target 0x16, current 0x35), state 0x01 (Opening), light bit 0x10
         let regs = [0x0000, 0x1635, 0x0100, 0x0000, 0x0000, 0x0000, 0x0010, 0x0000, 0x0000];
-        proto.process_write_9d31(&regs, &mut shared);
+        proto.handle_status_update(&regs, &mut shared);
         
         assert_eq!(shared.target_position, 0x16);
         assert_eq!(shared.current_position, 0x35);

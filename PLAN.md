@@ -80,9 +80,9 @@ Uses `rmodbus` in `no_std` mode.
     *   **Idle:** Waiting for frames.
     *   **Frame Received:** Pass buffer to `rmodbus`.
     *   **Process Request:**
-        *   If `0x10 (Write)` to `0x9D31`: Update Status in Shared Memory.
+        *   If `0x10 (Write)` to `0x9D31`: Call `handle_status_update` -> Update Status in Shared Memory.
         *   If `0x17 (Read/Write)`:
-            *   Read Sync data.
+            *   Call `handle_sync_counter`.
             *   Prepare Response: Check Shared Memory for pending commands (Button Presses) and populate the "Length 8" response registers.
     *   **Respond:** Send frame via UART.
 
