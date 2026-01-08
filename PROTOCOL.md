@@ -1,13 +1,13 @@
 # Hoermann HCP2 Protocol
 
-This document describes the HCP2 protocol implementation extracted from the source code. The protocol is based on Modbus RTU over a serial connection (RS-485 logic).
+This document describes the HCP2 protocol implementation. The protocol is based on Modbus RTU over a serial connection (RS-485 logic).
 
 ## Physical Layer
 *   **Interface:** Serial (UART)
-*   **Baud Rate:** 57600 (Derived from `hoermann_hcp.cpp`)
+*   **Baud Rate:** 57600
 *   **Data Bits:** 8
 *   **Stop Bits:** 1
-*   **Parity:** Even (Derived from `hoermann_hcp.cpp`)
+*   **Parity:** Even
 
 ## General Flow
 
