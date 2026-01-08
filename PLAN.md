@@ -83,6 +83,33 @@ Uses `rmodbus` in `no_std` mode.
             *   Prepare Response: Check Shared Memory for pending commands (Button Presses) and populate the "Length 8" response registers.
     *   **Respond:** Send frame via UART.
 
+### D. Main Core / Multi-Core Mode (Alternative)
+To support ESP32 variants without an LP core (or for easier debugging), we will implement a mode to run the HCP loop on the main High Performance (HP) core or a secondary HP core.
+
+*   **Crate:** Reuse `protocol.rs` and `registers.rs` in a standard `esp-hal` based binary.
+*   **Abstraction:** Hide the specific UART implementation (LP UART vs. HP UART) behind a trait or feature flags in the Rust project.
+*   **Usage:**
+    *   **Single Core:** Run the polling loop in a dedicated FreeRTOS task or async task.
+    *   **Dual Core:** Pin the loop to Core 1 while WiFi/ESPHome runs on Core 0.
+
+```text
+esphome-hcp2/
+├── common/                     # Shared logic (Protocol, Registers)
+│   ├── Cargo.toml
+│   └── src/
+│       ├── lib.rs
+│       ├── protocol.rs
+│       └── registers.rs
+├── lp-firmware/                # LP Core Binary
+│   ├── Cargo.toml              # Depends on: common, esp-lp-hal
+│   └── src/ ...
+├── hp-firmware/                # HP Core Binary (Alternative)
+│   ├── Cargo.toml              # Depends on: common, esp-hal
+│   └── src/
+│       └── main.rs             # Uses esp-hal UART
+└── components/ ...
+```
+
 ### D. Main Loop (`src/main.rs`)
 1.  Initialize UART and Shared Memory.
 2.  Enter infinite loop:
