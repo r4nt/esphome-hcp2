@@ -95,7 +95,7 @@ The drive writes 9 registers to address `0x9D31`.
 | Register Index | High Byte | Low Byte | Description |
 | :--- | :--- | :--- | :--- |
 | 0 | - | - | Unknown / Unused in code |
-| 1 | Target Position | Current Position | Position (0-100%?) |
+| 1 | Target Position | Current Position | Position (0-200, where 200 = 100% Open) |
 | 2 | State | - | [Drive State](#drive-states) |
 | 3 | - | - | Unknown |
 | 4 | - | - | Unknown |
@@ -116,33 +116,33 @@ The drive writes to address `0x9C41`.
 The drive reads from address `0x9CB9`. The device responds based on the requested quantity.
 
 #### Length 2 (Idle Poll)
-| Register Index | Value | Description |
-| :--- | :--- | :--- |
-| 0 | `Counter << 8 | 0x0004` | Echo Counter |
-| 1 | `Command Code << 8 | 0x0000` | Echo Command Code |
+| Register Index | High Byte | Low Byte | Description |
+| :--- | :--- | :--- | :--- |
+| 0 | Counter | `0x04` | Echo Counter |
+| 1 | Command Code | `0x00` | Echo Command Code |
 
 #### Length 5 (Bus Scan / Identification)
-| Register Index | Value | Description |
-| :--- | :--- | :--- |
-| 0 | `Counter << 8` | Echo Counter |
-| 1 | `Command Code << 8 | 0x0005` | Echo Command Code |
-| 2 | `0x0430` | Device Type / ID |
-| 3 | `0x10ff` | Device Type / ID |
-| 4 | `0xa845` | Device Type / ID |
+| Register Index | High Byte | Low Byte | Description |
+| :--- | :--- | :--- | :--- |
+| 0 | Counter | `0x00` | Echo Counter |
+| 1 | Command Code | `0x05` | Echo Command Code |
+| 2 | `0x04` | `0x30` | Device Type / ID |
+| 3 | `0x10` | `0xFF` | Device Type / ID |
+| 4 | `0xA8` | `0x45` | Device Type / ID |
 
 #### Length 8 (Command Action)
 Used to send commands to the drive.
 
-| Register Index | Value | Description |
-| :--- | :--- | :--- |
-| 0 | `Counter << 8` | Echo Counter |
-| 1 | `Command Code << 8 | 0x0001` | Echo Command Code |
-| 2 | **Action Reg 1** | See [Actions](#actions) |
-| 3 | **Action Reg 2** | See [Actions](#actions) |
-| 4 | `0x0000` | Padding |
-| 5 | `0x0000` | Padding |
-| 6 | `0x0000` | Padding |
-| 7 | `0x0000` | Padding |
+| Register Index | High Byte | Low Byte | Description |
+| :--- | :--- | :--- | :--- |
+| 0 | Counter | `0x00` | Echo Counter |
+| 1 | Command Code | `0x01` | Echo Command Code |
+| 2 | Action Reg 1 High | Action Reg 1 Low | See [Actions](#actions) |
+| 3 | Action Reg 2 High | Action Reg 2 Low | See [Actions](#actions) |
+| 4 | `0x00` | `0x00` | Padding |
+| 5 | `0x00` | `0x00` | Padding |
+| 6 | `0x00` | `0x00` | Padding |
+| 7 | `0x00` | `0x00` | Padding |
 
 ## Drive States
 Defined in `State` enum (from Register 2 High Byte of `0x9D31`):
