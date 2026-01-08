@@ -1,0 +1,10 @@
+[package]
+name = "hcp2-common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rmodbus = { version = "0.9", default-features = false }
+
+[build-dependencies]
+cbindgen = "0.26"

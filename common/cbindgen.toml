@@ -1,0 +1,11 @@
+language = "C++"
+no_includes = true
+include_guard = "HCP2_SHARED_DATA_H"
+namespace = "hcp2"
+braces = "SameLine"
+line_length = 100
+tab_width = 2
+documentation_style = "c99"
+
+[export]
+include = ["SharedData"]

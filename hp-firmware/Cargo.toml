@@ -1,0 +1,8 @@
+[package]
+name = "hcp2-hp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hcp2-common = { path = "../common" }
+esp-hal = "0.22" # Placeholder

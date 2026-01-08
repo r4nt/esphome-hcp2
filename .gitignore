@@ -1,1 +1,20 @@
-scratch
+# General
+scratch/
+*.swp
+*~
+.DS_Store
+
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock
+
+# ESPHome / PlatformIO
+.esphome/
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Generated Files
+
+components/hcp_bridge/shared_data.h

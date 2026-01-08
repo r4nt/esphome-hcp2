@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "common",
+    "lp-firmware",
+    "hp-firmware",
+]
+resolver = "2"
