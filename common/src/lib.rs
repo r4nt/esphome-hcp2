@@ -1,6 +1,6 @@
 #![no_std]
 
-pub mod registers;
+mod registers;
 pub mod shared;
 pub mod protocol;
 
