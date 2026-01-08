@@ -39,15 +39,18 @@ esphome-hcp2/
 ## Component Implementation Details
 
 ### A. Shared Memory (`src/shared.rs`)
-Defines the interface between HP and LP cores. Must be `#[repr(C)]` and aligned.
+Defines the interface between HP and LP cores.
 
-*   **Lock:** A simple atomic spinlock or flag (e.g., `AtomicBool`) to ensure only one core writes at a time.
+*   **Strategy:**
+    1.  **Source of Truth:** Define the struct in Rust (`common` crate) using `#[repr(C)]`.
+    2.  **C++ Integration:** Use `cbindgen` to automatically generate a `shared_data.h` header file. The ESPHome C++ component will include this header to ensure memory layout consistency.
+*   **Synchronization:** Use a simple `u8` flag (e.g., `0=Free`, `1=HP_Writing`, `2=LP_Writing`) or a Lock-Free Ring Buffer pattern to avoid reliance on complex cross-language `Atomic` implementations.
 *   **Data Structure:**
     ```rust
     #[repr(C)]
     struct SharedData {
-        // Sync
-        lock: AtomicBool,
+        // Sync (Simple u8 flag for manual spinlock/ownership)
+        owner_flag: u8, 
         
         // HP -> LP (Command)
         command_request: u8,      // e.g., OPEN, CLOSE, LIGHT
