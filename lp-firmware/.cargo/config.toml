@@ -1,0 +1,10 @@
+[target.riscv32imac-unknown-none-elf]
+rustflags = [
+  "-C", "link-arg=-Tmemory.x",
+]
+
+[build]
+target = "riscv32imac-unknown-none-elf"
+
+[env]
+ESP_HAL_CHIP = "esp32c6"

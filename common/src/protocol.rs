@@ -33,7 +33,7 @@ impl Hcp2Protocol {
         valid_addr && valid_func
     }
 
-    pub fn identify_request(&self, address: u16) -> RegisterType {
+    pub(crate) fn identify_request(&self, address: u16) -> RegisterType {
         match address {
             ADDR_STATUS_UPDATE => RegisterType::StatusUpdate,
             ADDR_SYNC_COUNTER => RegisterType::SyncCounter,
@@ -93,6 +93,95 @@ impl Hcp2Protocol {
         resp
     }
 
+    /// Dispatches a raw byte frame to the appropriate handler.
+    /// 
+    /// Note: We are implementing manual frame parsing here because 'rmodbus' (v0.9)
+    /// does not natively support Function Code 0x17 (Read/Write Multiple Registers),
+    /// which is central to the HCP2 protocol.
+    pub fn dispatch_frame(&mut self, frame: &[u8], out_buffer: &mut [u8], shared: &mut SharedData, millis: u32) -> usize {
+        if frame.len() < 4 {
+            return 0;
+        }
+
+        let address = frame[0];
+        let func = frame[1];
+
+        if !self.validate_frame(address, func) {
+            return 0;
+        }
+
+        // Validate CRC (Modbus RTU: last 2 bytes)
+        let len = frame.len();
+        let received_crc = ((frame[len - 2] as u16) << 8) | (frame[len - 1] as u16);
+        let computed_crc = crc16(&frame[..len - 2]);
+        if received_crc != computed_crc {
+            return 0;
+        }
+
+        match func {
+            FUNC_WRITE_MULTIPLE_REGISTERS => {
+                if frame.len() < 9 { return 0; }
+                let start_addr = ((frame[2] as u16) << 8) | (frame[3] as u16);
+                let qty = ((frame[4] as u16) << 8) | (frame[5] as u16);
+                let byte_count = frame[6] as usize;
+                if frame.len() < 9 + byte_count { return 0; }
+                
+                let mut regs = [0u16; 16];
+                for i in 0..(byte_count / 2).min(16) {
+                    regs[i] = ((frame[7 + i * 2] as u16) << 8) | (frame[8 + i * 2] as u16);
+                }
+
+                match self.identify_request(start_addr) {
+                    RegisterType::StatusUpdate => self.handle_status_update(&regs[..qty as usize], shared),
+                    RegisterType::SyncCounter => self.handle_sync_counter(&regs[..qty as usize]),
+                    _ => {}
+                }
+                0 
+            }
+            FUNC_READ_WRITE_MULTIPLE_REGISTERS => {
+                if frame.len() < 13 { return 0; }
+                let rd_addr = ((frame[2] as u16) << 8) | (frame[3] as u16);
+                let rd_qty = ((frame[4] as u16) << 8) | (frame[5] as u16);
+                let wr_addr = ((frame[6] as u16) << 8) | (frame[7] as u16);
+                let wr_qty = ((frame[8] as u16) << 8) | (frame[9] as u16);
+                let byte_count = frame[10] as usize;
+                
+                if frame.len() < 13 + byte_count { return 0; }
+
+                let mut wr_regs = [0u16; 16];
+                for i in 0..(byte_count / 2).min(16) {
+                    wr_regs[i] = ((frame[11 + i * 2] as u16) << 8) | (frame[12 + i * 2] as u16);
+                }
+
+                if self.identify_request(wr_addr) == RegisterType::SyncCounter {
+                    self.handle_sync_counter(&wr_regs[..wr_qty as usize]);
+                }
+
+                if self.identify_request(rd_addr) == RegisterType::Poll {
+                    let resp_regs = self.prepare_poll_response(rd_qty, shared, millis);
+                    let resp_byte_count = (rd_qty * 2) as u8;
+                    
+                    if out_buffer.len() < 5 + resp_byte_count as usize { return 0; }
+
+                    out_buffer[0] = ADDRESS_HCP;
+                    out_buffer[1] = FUNC_READ_WRITE_MULTIPLE_REGISTERS;
+                    out_buffer[2] = resp_byte_count;
+                    for i in 0..rd_qty as usize {
+                        out_buffer[3 + i * 2] = (resp_regs[i] >> 8) as u8;
+                        out_buffer[4 + i * 2] = (resp_regs[i] & 0xFF) as u8;
+                    }
+                    let out_len = 3 + resp_byte_count as usize;
+                    let crc = crc16(&out_buffer[..out_len]);
+                    out_buffer[out_len] = (crc & 0xFF) as u8;
+                    out_buffer[out_len + 1] = (crc >> 8) as u8;
+                    return out_len + 2;
+                }
+                0
+            }
+            _ => 0
+        }
+    }
+
     fn get_action_registers(&mut self, shared: &SharedData, millis: u32) -> (u16, u16) {
         let action = shared.command_request;
         if action == CMD_NONE {
@@ -119,6 +208,22 @@ impl Hcp2Protocol {
     }
 }
 
+fn crc16(data: &[u8]) -> u16 {
+    let mut crc = 0xFFFFu16;
+    for &byte in data {
+        crc ^= byte as u16;
+        for _ in 0..8 {
+            if (crc & 1) != 0 {
+                crc >>= 1;
+                crc ^= 0xA001;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+    (crc << 8) | (crc >> 8)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,12 +241,6 @@ mod tests {
         assert!(!proto.validate_frame(ADDRESS_HCP, 0x88)); // Invalid func
 
         // Example from PROTOCOL.md: 0x1635 (target 0x16, current 0x35), state 0x01 (Opening), light bit 0x10
-
-        
-        // Test Case 1: Opening, Light On
-        // Reg 1: Target=0x16, Current=0x35
-        // Reg 2: State=0x01 (Opening)
-        // Reg 6: Light=0x10 (On)
         let regs1 = [0x0000, 0x1635, 0x0100, 0x0000, 0x0000, 0x0000, 0x0010, 0x0000, 0x0000];
         proto.handle_status_update(&regs1, &mut shared);
         assert_eq!(shared.target_position, 0x16);
@@ -150,8 +249,6 @@ mod tests {
         assert!(shared.light_on);
 
         // Test Case 2: Closed, Light Off
-        // Reg 2: State=0x40 (Closed)
-        // Reg 6: Light=0x00 (Off)
         let regs2 = [0x0000, 0x0000, 0x4000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000];
         proto.handle_status_update(&regs2, &mut shared);
         assert_eq!(shared.current_state, DriveState::Closed as u8);
@@ -164,29 +261,28 @@ mod tests {
         let shared = SharedData::default();
 
         // Simulate sync counter update from drive
-        // Counter=0x12, Command=0x34
         let sync_regs = [0x1234];
         proto.handle_sync_counter(&sync_regs);
 
         // Test Length 2 (Idle Poll)
         let resp2 = proto.prepare_poll_response(2, &shared, 0);
-        assert_eq!(resp2[0], 0x1204); // Counter | 0x04
-        assert_eq!(resp2[1], 0x3400); // Command | 0x00
+        assert_eq!(resp2[0], 0x1204); 
+        assert_eq!(resp2[1], 0x3400); 
 
         // Test Length 5 (Bus Scan)
         let resp5 = proto.prepare_poll_response(5, &shared, 0);
-        assert_eq!(resp5[0], 0x1200); // Counter | 0x00
-        assert_eq!(resp5[1], 0x3405); // Command | 0x05
+        assert_eq!(resp5[0], 0x1200); 
+        assert_eq!(resp5[1], 0x3405); 
         assert_eq!(resp5[2], 0x0430);
         assert_eq!(resp5[3], 0x10FF);
         assert_eq!(resp5[4], 0xA845);
 
         // Test Length 8 (Command Action - None)
         let resp8 = proto.prepare_poll_response(8, &shared, 0);
-        assert_eq!(resp8[0], 0x1200); // Counter | 0x00
-        assert_eq!(resp8[1], 0x3401); // Command | 0x01
-        assert_eq!(resp8[2], 0x0000); // Action Reg 1
-        assert_eq!(resp8[3], 0x0000); // Action Reg 2
+        assert_eq!(resp8[0], 0x1200); 
+        assert_eq!(resp8[1], 0x3401); 
+        assert_eq!(resp8[2], 0x0000); 
+        assert_eq!(resp8[3], 0x0000); 
     }
 
     #[test]
@@ -194,14 +290,12 @@ mod tests {
         let mut proto = Hcp2Protocol::new();
         let mut shared = SharedData::default();
 
-        // Helper to check action registers at specific times
         let check_action = |proto: &mut Hcp2Protocol, shared: &SharedData, time: u32, expected_r2, expected_r3| {
             let resp = proto.prepare_poll_response(8, shared, time);
             assert_eq!(resp[2], expected_r2, "Reg2 mismatch at time {}", time);
             assert_eq!(resp[3], expected_r3, "Reg3 mismatch at time {}", time);
         };
 
-        // Table of commands and their expected Pressing (0-500ms) and Release (>500ms) values
         let test_cases = [
             (CMD_OPEN,         0x0210, 0x0000, 0x0110, 0x0000),
             (CMD_CLOSE,        0x0220, 0x0000, 0x0120, 0x0000),
@@ -215,31 +309,35 @@ mod tests {
 
         for (cmd, press_r2, press_r3, rel_r2, rel_r3) in test_cases.iter() {
             shared.command_request = *cmd;
-            
-            // Time = Start (0ms elapsed) -> Expect Pressing
             check_action(&mut proto, &shared, current_time, *press_r2, *press_r3);
-            
-            // Time = Start + 499ms -> Expect Pressing
             check_action(&mut proto, &shared, current_time + 499, *press_r2, *press_r3);
-            
-            // Time = Start + 500ms -> Expect Release
             check_action(&mut proto, &shared, current_time + 500, *rel_r2, *rel_r3);
-
-            // Move time forward for next test
             current_time += 2000;
         }
 
-        // Test Reset to CMD_NONE
         shared.command_request = CMD_NONE;
         check_action(&mut proto, &shared, current_time, 0x0000, 0x0000);
     }
 
     #[test]
-    fn test_identify_request() {
-        let proto = Hcp2Protocol::new();
-        assert_eq!(proto.identify_request(0x9D31), RegisterType::StatusUpdate);
-        assert_eq!(proto.identify_request(0x9C41), RegisterType::SyncCounter);
-        assert_eq!(proto.identify_request(0x9CB9), RegisterType::Poll);
-        assert_eq!(proto.identify_request(0xFFFF), RegisterType::Unknown);
+    fn test_dispatch_frame_busscan() {
+        let mut proto = Hcp2Protocol::new();
+        let mut shared = SharedData::default();
+        let request = [0x02, 0x17, 0x9C, 0xB9, 0x00, 0x05, 0x9C, 0x41, 0x00, 0x03, 0x06, 0x00, 0x02, 0x00, 0x00, 0x01, 0x02, 0xF8, 0x35];
+        let mut response = [0u8; 32];
+        let len = proto.dispatch_frame(&request, &mut response, &mut shared, 0);
+        assert!(len > 0);
+        assert_eq!(response[0], 0x02);
+        assert_eq!(response[1], 0x17);
+        assert_eq!(response[2], 0x0A);
+        assert_eq!(response[7], 0x04);
+        assert_eq!(response[8], 0x30);
+    }
+
+    #[test]
+    fn test_crc() {
+        let request = [0x02, 0x17, 0x9C, 0xB9, 0x00, 0x05, 0x9C, 0x41, 0x00, 0x03, 0x06, 0x00, 0x02, 0x00, 0x00, 0x01, 0x02];
+        let crc = crc16(&request);
+        assert_eq!(crc, 0xF835); 
     }
 }

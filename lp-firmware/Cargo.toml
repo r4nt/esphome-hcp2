@@ -5,4 +5,12 @@ edition = "2021"
 
 [dependencies]
 hcp2-common = { path = "../common" }
-esp-lp-hal = "0.1" # Placeholder
+esp-lp-hal = { version = "0.3.0", features = ["esp32c6"] }
+panic-halt = "0.2.0"
+riscv = "0.11.1"
+embedded-hal = "1.0.0"
+
+[[bin]]
+name = "hcp2-lp"
+test = false
+bench = false
