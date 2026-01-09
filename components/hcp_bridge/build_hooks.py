@@ -8,12 +8,21 @@ def build_rust_firmware(config):
     component_dir = os.path.dirname(__file__)
     base_dir = os.path.dirname(os.path.dirname(component_dir))
     
+    # Get build path
+    build_path = CORE.build_path
+    if not build_path:
+        print("No build path available, skipping Rust build")
+        return
+
+    dest_dir = os.path.join(build_path, "src", "esphome", "components", "hcp_bridge")
+    os.makedirs(dest_dir, exist_ok=True)
+
+    lp_bin_output = os.path.join(dest_dir, "hcp2-lp.bin")
+    lp_header_output = os.path.join(dest_dir, "hcp2_lp_bin.h")
+    hp_lib_output = os.path.join(dest_dir, "libhcp2_hp_lib.a")
+    
     lp_dir = os.path.join(base_dir, "lp-firmware")
     hp_dir = os.path.join(base_dir, "hp-firmware")
-    
-    lp_bin_output = os.path.join(component_dir, "hcp2-lp.bin")
-    lp_header_output = os.path.join(component_dir, "hcp2_lp_bin.h")
-    hp_lib_output = os.path.join(component_dir, "libhcp2_hp_lib.a")
     
     # Determine target based on ESP32 variant
     esp32_config = CORE.config.get("esp32", {})
@@ -73,12 +82,9 @@ def build_rust_firmware(config):
         print(f"HINT: If building for Xtensa (ESP32/S2/S3), ensure 'espup' toolchain is installed and environment is sourced.")
         raise RuntimeError(f"Rust HP library build failed for {rust_target}")
 
-    # Paths to built artifacts
-    # LP is always hardcoded to C6 target in its config
+    # Paths to built artifacts (Workspace shares 'target' at root)
     lp_target = "riscv32imac-unknown-none-elf"
     lp_elf_path = os.path.join(base_dir, "target", lp_target, "release", "hcp2-lp")
-    
-    # HP uses the detected target
     hp_lib_path = os.path.join(base_dir, "target", rust_target, "release", "libhcp2_hp_lib.a")
     
     # 3. Process LP Binary
@@ -103,40 +109,40 @@ def build_rust_firmware(config):
                 f.write("#include <stddef.h>\n")
                 f.write("#include <stdint.h>\n\n")
                 f.write("#ifdef USE_ESP32_VARIANT_ESP32C6\n")
-                f.write(f"const uint8_t lp_firmware_bin[] = {{\n")
+                f.write(f"const uint8_t lp_firmware_bin[] = {{ \n")
                 for i, byte in enumerate(data):
                     f.write(f"0x{byte:02X}, ")
                     if (i + 1) % 16 == 0:
                         f.write("\n")
-                f.write("\n};\n")
+                f.write("\n};")
                 f.write(f"const size_t lp_firmware_bin_size = {len(data)};\n")
                 f.write("#endif\n")
         except Exception as e:
             print(f"Error processing LP artifacts: {e}")
+            raise e
     else:
         # Create dummy header to satisfy component file existence
         # We always overwrite to ensure it's empty in HP mode
         with open(lp_header_output, "w") as f:
             f.write("#pragma once\n// Dummy header for HP-only build\n")
 
-    # 4. Copy Artifacts
+    # 4. Copy HP Library to Build Dir
     try:
-        # Copy HP lib to component dir
         shutil.copy(hp_lib_path, hp_lib_output)
+        print(f"Artifacts placed in {dest_dir}")
 
-        # Copy to build directory if it exists
-        build_path = CORE.build_path
-        if build_path:
-            dest_dir = os.path.join(build_path, "src", "esphome", "components", "hcp_bridge")
-            os.makedirs(dest_dir, exist_ok=True)
-            if is_lp_build:
-                shutil.copy(lp_bin_output, dest_dir)
-            shutil.copy(lp_header_output, dest_dir)
-            shutil.copy(hp_lib_output, dest_dir)
-            print(f"Copied artifacts to {dest_dir}")
+        # 5. ALSO Copy artifacts to the Source Component Directory
+        # This is required because __init__.py adds '-L<component_dir>' to linker flags.
+        # We must ensure the source dir has the correct library for the CURRENT target architecture.
+        print(f"Updating source artifacts in {component_dir}...")
+        shutil.copy(lp_header_output, os.path.join(component_dir, "hcp2_lp_bin.h"))
+        shutil.copy(hp_lib_path, os.path.join(component_dir, "libhcp2_hp_lib.a"))
+        if is_lp_build:
+             shutil.copy(lp_bin_output, os.path.join(component_dir, "hcp2-lp.bin"))
 
     except Exception as e:
-        print(f"Error processing Rust artifacts: {e}")
+        print(f"Error copying Rust artifacts: {e}")
+        raise e
 
 # Add to ESPHome build process
 def register_build_hooks():
