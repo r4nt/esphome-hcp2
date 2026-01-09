@@ -34,9 +34,16 @@ Building the firmware also automatically generates `components/hcp_bridge/shared
 
 ## Usage
 
-Two example configurations are provided:
-*   **`example_lp.yaml`**: Uses the Low Power (LP) core. Best for power saving. Requires wiring RS485 to GPIO 4/5.
-*   **`example_hp.yaml`**: Uses the High Performance (HP) core. Compatible with standard Seeed Xiao RS485 board wiring (GPIO 22/23) without modification.
+Three example configurations are provided to demonstrate different modes and hardware:
+
+1.  **`example_c6_lp.yaml`**: **ESP32-C6 LP Core Mode**. Best for power saving and timing. Requires jumper wiring (RX->4, TX->5) on Seeed Xiao RS485.
+2.  **`example_c6_hp.yaml`**: **ESP32-C6 HP Core Mode**. Works with standard Seeed Xiao RS485 wiring (RX->23, TX->22).
+3.  **`example_s3_hp.yaml`**: **ESP32-S3 HP Core Mode**. Demonstrates dual-core pinning (Protocol on Core 1). Requires Xtensa toolchain (`espup`).
+
+To build and flash:
+```bash
+esphome run example_c6_hp.yaml
+```
 
 ## Universal ESP32 Support (HP Mode)
 
@@ -46,16 +53,15 @@ The protocol logic running in **HP Mode** (`core: hp`) is platform-agnostic and 
 *   **ESP32 / S2 / S3 (Xtensa):** Requires the Xtensa Rust toolchain.
 
 ### Installing Xtensa Support (for non-C3/C6 chips)
-If you are using an original ESP32, S2, or S3, you must install the forked Rust toolchain:
+If you are using an original ESP32, S2, or S3, you must install the forked Rust toolchain using `espup`:
 
 1.  **Install `espup`:**
     ```bash
-    curl -L https://github.com/esp-rs/espup/releases/latest/download/espup-x86_64-unknown-linux-gnu -o espup
-    chmod +x espup
+    cargo install espup --locked
     ```
 2.  **Install Toolchain:**
     ```bash
-    ./espup install
+    espup install
     ```
 3.  **Activate Environment:**
     ```bash

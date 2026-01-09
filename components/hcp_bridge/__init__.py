@@ -37,7 +37,9 @@ async def to_code(config):
     
     # Add ESP-IDF dependencies
     cg.add_build_flag("-DUSE_ESP32_VARIANT_ESP32C6")
-    
+
     # Link the HP static library
-    cg.add_build_flag("-Lsrc/esphome/components/hcp_bridge")
+    import os
+    component_dir = os.path.dirname(__file__)
+    cg.add_build_flag("-L" + component_dir)
     cg.add_build_flag("-lhcp2_hp_lib")

@@ -28,11 +28,11 @@ def build_rust_firmware(config):
     elif variant == "esp32c3":
         rust_target = "riscv32imc-unknown-none-elf"
     elif variant == "esp32":
-        rust_target = "xtensa-esp32-espidf"
+        rust_target = "xtensa-esp32-none-elf"
     elif variant == "esp32s2":
-        rust_target = "xtensa-esp32s2-espidf"
+        rust_target = "xtensa-esp32s2-none-elf"
     elif variant == "esp32s3":
-        rust_target = "xtensa-esp32s3-espidf"
+        rust_target = "xtensa-esp32s3-none-elf"
     elif variant == "esp32h2":
         rust_target = "riscv32imac-unknown-none-elf"
     else:
@@ -50,19 +50,28 @@ def build_rust_firmware(config):
             ], cwd=lp_dir, check=True)
         except Exception as e:
             print(f"Error building LP firmware: {e}")
-            return
+            raise RuntimeError("Rust LP firmware build failed")
     else:
         print(f"Skipping LP Firmware build (Variant='{variant}', Core='{core_mode}')")
 
     # 2. Build HP static lib (Universal)
     print(f"Building HCP2 HP Lib (Rust) for {rust_target}...")
     try:
-        subprocess.run([
-            "cargo", "build", "--release", "--target", rust_target
-        ], cwd=hp_dir, check=True)
+        cargo_cmd = ["cargo"]
+        extra_args = []
+        if rust_target.startswith("xtensa-"):
+            cargo_cmd.append("+esp")
+            # Custom xtensa targets require building core from source
+            extra_args = ["-Z", "build-std=core"]
+        
+        subprocess.run(
+            cargo_cmd + ["build", "--release", "--target", rust_target] + extra_args, 
+            cwd=hp_dir, check=True
+        )
     except Exception as e:
         print(f"Error building HP lib: {e}")
-        return
+        print(f"HINT: If building for Xtensa (ESP32/S2/S3), ensure 'espup' toolchain is installed and environment is sourced.")
+        raise RuntimeError(f"Rust HP library build failed for {rust_target}")
 
     # Paths to built artifacts
     # LP is always hardcoded to C6 target in its config
