@@ -47,15 +47,15 @@ impl Hcp2Protocol {
             return;
         }
         // Reg 1: Target Position (High) | Current Position (Low)
-        shared.target_position = (regs[1] >> 8) as u8;
-        shared.current_position = (regs[1] & 0xFF) as u8;
+        shared.write_target_pos((regs[1] >> 8) as u8);
+        shared.write_current_pos((regs[1] & 0xFF) as u8);
         
         // Reg 2: State (High)
         let state_val = (regs[2] >> 8) as u8;
-        shared.current_state = DriveState::from(state_val) as u8;
+        shared.write_state(DriveState::from(state_val) as u8);
         
         // Reg 6: Light Status (Bit 0x10)
-        shared.light_on = (regs[6] & 0x10) != 0;
+        shared.write_light((regs[6] & 0x10) != 0);
     }
 
     pub fn handle_sync_counter(&mut self, regs: &[u16]) {
@@ -183,7 +183,7 @@ impl Hcp2Protocol {
     }
 
     fn get_action_registers(&mut self, shared: &SharedData, millis: u32) -> (u16, u16) {
-        let action = shared.command_request;
+        let action = shared.read_command();
         if action == CMD_NONE {
             self.last_action = CMD_NONE;
             return (0, 0);

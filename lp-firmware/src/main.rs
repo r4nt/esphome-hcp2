@@ -47,8 +47,8 @@ fn main() -> ! {
             let mut tx_buf = [0u8; 128];
             
             // Try to acquire "lock"
-            if shared_data.owner_flag != 1 { // 1 = HP writing
-                shared_data.owner_flag = OWNER_LP;
+            if shared_data.read_owner() != 1 { // 1 = HP writing
+                shared_data.write_owner(OWNER_LP);
                 
                 let tx_len = protocol.dispatch_frame(&rx_buf[..rx_idx], &mut tx_buf, shared_data, current_ms);
                 
@@ -68,7 +68,7 @@ fn main() -> ! {
                     let _ = dir_pin.set_low();
                 }
                 
-                shared_data.owner_flag = OWNER_FREE;
+                shared_data.write_owner(OWNER_FREE);
             }
 
             rx_idx = 0;
