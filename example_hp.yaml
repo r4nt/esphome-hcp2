@@ -1,17 +1,15 @@
-# Example configuration for testing HCP2 on ESP32-C6
+# Example configuration for HP Core mode
+# Runs as a task on the main CPU.
+# Works with standard Seeed Xiao RS485 board wiring (GPIO 22/23).
 #
-# AUTOMATION:
-# The Rust firmware is automatically built and converted to a binary
-# whenever you run 'esphome compile' or 'esphome run', provided
-# you have the Rust toolchain installed.
-#
-# WIRING:
-# ESP32-C6 GPIO 4 (RX) -> HCP Bus TX
-# ESP32-C6 GPIO 5 (TX) -> HCP Bus RX
+# WIRING (ESP32-C6):
+# GPIO 23 (RX) -> RS485 RO
+# GPIO 22 (TX) -> RS485 DI
+# GPIO 2  (DE) -> RS485 DE/RE
 
 esphome:
-  name: hcp2-test
-  friendly_name: HCP2 Test
+  name: hcp2-hp-test
+  friendly_name: HCP2 HP Test
 
 esp32:
   board: esp32-c6-devkitc-1
@@ -24,7 +22,6 @@ esp32:
       CONFIG_ULP_COPROC_RESERVE_MEM: "16384"
       CONFIG_ULP_COPROC_TYPE_LP_CORE: "y"
 
-# Load the local component from the components/ directory
 external_components:
   - source:
       type: local
@@ -41,9 +38,12 @@ api:
 ota:
   - platform: esphome
 
-# Main bridge component that starts the LP core
 hcp_bridge:
   id: hcp_hub
+  core: hp
+  tx_pin: 22
+  rx_pin: 23
+  flow_control_pin: 2
 
 cover:
   - platform: hcp_bridge

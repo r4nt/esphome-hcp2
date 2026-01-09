@@ -5,3 +5,6 @@ members = [
     "hp-firmware",
 ]
 resolver = "2"
+
+[profile.release]
+panic = "abort"

@@ -1,8 +1,14 @@
 [package]
-name = "hcp2-hp"
+name = "hcp2-hp-lib"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["staticlib"]
+
 [dependencies]
 hcp2-common = { path = "../common" }
-esp-hal = "0.22" # Placeholder
+panic-halt = "0.2.0"
+
+[profile.release]
+panic = "abort"

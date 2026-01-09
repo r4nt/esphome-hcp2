@@ -32,6 +32,17 @@ rust-objcopy -O binary target/riscv32imac-unknown-none-elf/release/hcp2-lp compo
 
 Building the firmware also automatically generates `components/hcp_bridge/shared_data.h`, which is required for the ESPHome C++ build.
 
+## Usage
+
+Two example configurations are provided:
+*   **`example_lp.yaml`**: Uses the Low Power (LP) core. Best for power saving. Requires wiring RS485 to GPIO 4/5.
+*   **`example_hp.yaml`**: Uses the High Performance (HP) core. Compatible with standard Seeed Xiao RS485 board wiring (GPIO 22/23) without modification.
+
+To build and flash:
+```bash
+esphome run example_hp.yaml
+```
+
 ## Wiring (ESP32-C6)
 
 The LP core uses fixed pins for the LP UART:
@@ -42,7 +53,7 @@ The LP core uses fixed pins for the LP UART:
 
 ## Automated Build Integration
 
-The provided `example.yaml` includes a Python script that automates the Rust compilation and binary conversion during the ESPHome build process. This ensures `hcp2-lp.bin` and `shared_data.h` are always up to date.
+The provided example configurations include a Python script that automates the Rust compilation and binary conversion during the ESPHome build process. This ensures `hcp2-lp.bin`, `libhcp2_hp_lib.a`, and `shared_data.h` are always up to date.
 
 To use this, ensure your environment has the Rust prerequisites listed above.
 
