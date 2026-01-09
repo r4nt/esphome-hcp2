@@ -1,0 +1,40 @@
+esphome:
+  name: hcp-test-usb
+  friendly_name: HCP Test USB
+
+esp32:
+  board: esp32-c6-devkitc-1
+  variant: esp32c6
+  framework:
+    type: esp-idf
+
+# Redirect logger to USB JTAG/Serial so it doesn't interfere with UART0
+# This allows logs to come through the same USB cable, but via a different internal "port"
+# (or simply prevents them from being sent to TX/RX pins)
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+  level: DEBUG
+
+external_components:
+  - source:
+      type: local
+      path: ../../components
+
+hcp_bridge:
+  id: hcp_hub
+  core: hp
+  # Default UART0 pins for ESP32-C6 (Connected to the USB-Serial bridge chip)
+  tx_pin: 1
+  rx_pin: 3
+  flow_control_pin: 2 # Dummy for USB test
+
+cover:
+  - platform: hcp_bridge
+    name: "Test Door"
+    hcp_bridge_id: hcp_hub
+
+switch:
+  - platform: hcp_bridge
+    name: "Test Light"
+    hcp_bridge_id: hcp_hub
+    type: light
