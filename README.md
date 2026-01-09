@@ -38,10 +38,30 @@ Two example configurations are provided:
 *   **`example_lp.yaml`**: Uses the Low Power (LP) core. Best for power saving. Requires wiring RS485 to GPIO 4/5.
 *   **`example_hp.yaml`**: Uses the High Performance (HP) core. Compatible with standard Seeed Xiao RS485 board wiring (GPIO 22/23) without modification.
 
-To build and flash:
-```bash
-esphome run example_hp.yaml
-```
+## Universal ESP32 Support (HP Mode)
+
+The protocol logic running in **HP Mode** (`core: hp`) is platform-agnostic and supports all ESP32 variants (ESP32, S2, S3, C3, C6, H2).
+
+*   **ESP32-C3 / C6 / H2 (RISC-V):** Works out of the box with standard stable Rust.
+*   **ESP32 / S2 / S3 (Xtensa):** Requires the Xtensa Rust toolchain.
+
+### Installing Xtensa Support (for non-C3/C6 chips)
+If you are using an original ESP32, S2, or S3, you must install the forked Rust toolchain:
+
+1.  **Install `espup`:**
+    ```bash
+    curl -L https://github.com/esp-rs/espup/releases/latest/download/espup-x86_64-unknown-linux-gnu -o espup
+    chmod +x espup
+    ```
+2.  **Install Toolchain:**
+    ```bash
+    ./espup install
+    ```
+3.  **Activate Environment:**
+    ```bash
+    . $HOME/export-esp.sh
+    ```
+    (You must run this in every shell before compiling, or add it to your `.bashrc`).
 
 ## Wiring (ESP32-C6)
 
