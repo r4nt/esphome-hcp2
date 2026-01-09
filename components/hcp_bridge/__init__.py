@@ -2,6 +2,7 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_ID, CONF_TX_PIN, CONF_RX_PIN
 from .build_hooks import build_rust_firmware
+from esphome.core import CORE
 
 CONF_CORE = "core"
 CONF_FLOW_CONTROL_PIN = "flow_control_pin"
@@ -19,7 +20,7 @@ CONFIG_SCHEMA = cv.Schema({
 
 async def to_code(config):
     # Trigger the automated build of the Rust firmware (only needed for LP mode, but good to ensure logic is valid)
-    build_rust_firmware(config)
+    is_lp_build = build_rust_firmware(config)
 
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
@@ -39,7 +40,6 @@ async def to_code(config):
     cg.add_build_flag("-DUSE_ESP32_VARIANT_ESP32C6")
 
     # Link the HP static library
-    import os
-    component_dir = os.path.dirname(__file__)
-    cg.add_build_flag("-L" + component_dir)
-    cg.add_build_flag("-lhcp2_hp_lib")
+    if not is_lp_build: 
+        cg.add_build_flag("-L" + str(CORE.relative_build_path("hp-firmware")))
+        cg.add_build_flag("-lhcp2_hp_lib")

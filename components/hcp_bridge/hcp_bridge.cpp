@@ -1,7 +1,12 @@
 #include "hcp_bridge.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
-#include "hcp2_lp_bin.h"
+
+#ifdef USE_HCP_LP_MODE
+extern uint8_t *lp_firmware_bin;
+extern size_t lp_firmware_bin_size;
+#endif
+
 #include <driver/uart.h>
 #include <driver/gpio.h>
 
