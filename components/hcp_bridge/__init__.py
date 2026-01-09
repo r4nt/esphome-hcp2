@@ -31,6 +31,10 @@ async def to_code(config):
         config[CONF_FLOW_CONTROL_PIN]
     ))
     
+    # Add compile-time flag for LP mode to guard ULP includes
+    if config[CONF_CORE] == "lp":
+        cg.add_build_flag("-DUSE_HCP_LP_MODE")
+    
     # Add ESP-IDF dependencies
     cg.add_build_flag("-DUSE_ESP32_VARIANT_ESP32C6")
     

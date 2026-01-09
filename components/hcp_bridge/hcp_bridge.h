@@ -4,7 +4,7 @@
 #include "esphome/core/helpers.h"
 #include "shared_data.h"
 
-#ifdef USE_ESP32_VARIANT_ESP32C6
+#if defined(USE_ESP32_VARIANT_ESP32C6) && defined(USE_HCP_LP_MODE)
 #include "ulp_lp_core.h"
 #endif
 

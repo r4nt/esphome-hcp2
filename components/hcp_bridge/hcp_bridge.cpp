@@ -30,6 +30,7 @@ void HCPBridge::setup() {
   }
 
 #ifdef USE_ESP32_VARIANT_ESP32C6
+#if defined(USE_HCP_LP_MODE)
   if (use_lp_core_) {
     ESP_LOGI(TAG, "Starting LP Core...");
     esp_err_t err = ulp_lp_core_load_binary(lp_firmware_bin, lp_firmware_bin_size);
@@ -46,9 +47,14 @@ void HCPBridge::setup() {
       ESP_LOGE(TAG, "Failed to run LP core: %d", err);
     }
   } else {
-    ESP_LOGI(TAG, "Starting HP Core Task...");
-    xTaskCreate(hp_core_task, "hcp_hp_task", 4096, this, 5, &hp_task_handle_);
+    // Fallback if configured for LP but flag is false (unlikely with new static config)
+    ESP_LOGW(TAG, "LP Mode compiled but runtime flag false?");
   }
+#else
+  // HP Mode (No ULP support compiled in)
+  ESP_LOGI(TAG, "Starting HP Core Task...");
+  xTaskCreate(hp_core_task, "hcp_hp_task", 4096, this, 5, &hp_task_handle_);
+#endif
 #else
   ESP_LOGW(TAG, "LP Core only supported on ESP32-C6. Running in stub mode.");
 #endif
