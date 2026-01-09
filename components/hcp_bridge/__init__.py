@@ -14,9 +14,9 @@ async def to_code(config):
     # Trigger the automated build of the Rust firmware
     build_rust_firmware(config)
 
-    var = cg.new_PVar(config[CONF_ID])
+    var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     
     # Add ESP-IDF dependencies for LP Core
-    cg.add_library("ulp", None)
+    # ULP support is part of ESP-IDF but needs configuration
     cg.add_build_flag("-DUSE_ESP32_VARIANT_ESP32C6")

@@ -18,6 +18,11 @@ esp32:
   variant: esp32c6
   framework:
     type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP32C6_ULP_COPROC_ENABLED: "y"
+      CONFIG_ULP_COPROC_ENABLED: "y"
+      CONFIG_ULP_COPROC_RESERVE_MEM: "16384"
+      CONFIG_ULP_COPROC_TYPE_LP_CORE: "y"
 
 # Load the local component from the components/ directory
 external_components:
@@ -27,6 +32,10 @@ external_components:
 
 logger:
   level: DEBUG
+
+wifi:
+  ssid: "MySSID"
+  password: "MyPassword"
 
 api:
 ota:
