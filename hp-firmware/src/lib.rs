@@ -1,6 +1,5 @@
 #![no_std]
 
-use hcp2_common::*;
 use panic_halt as _;
 
 // Re-export C functions from common so they appear in this staticlib
