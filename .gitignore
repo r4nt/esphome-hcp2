@@ -5,6 +5,7 @@ scratch/
 *~
 .DS_Store
 *.a
+__pycache__/
 
 # Rust
 target/
