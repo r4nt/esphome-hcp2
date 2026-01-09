@@ -34,8 +34,8 @@ logger:
   level: DEBUG
 
 wifi:
-  ssid: "MySSID"
-  password: "MyPassword"
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
 
 api:
 ota:
