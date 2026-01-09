@@ -53,7 +53,13 @@ void HCPBridge::setup() {
 #else
   // HP Mode (No ULP support compiled in)
   ESP_LOGI(TAG, "Starting HP Core Task...");
+  #if CONFIG_FREERTOS_UNICORE
   xTaskCreate(hp_core_task, "hcp_hp_task", 4096, this, 5, &hp_task_handle_);
+  #else
+    // On dual-core chips, pin to Core 1 (APP_CPU) to avoid interference from WiFi/BT on Core 0
+    xTaskCreatePinnedToCore(hp_core_task, "hcp_hp_task", 4096, this, 5, &hp_task_handle_, 1);
+  #endif
+  
 #endif
 #else
   ESP_LOGW(TAG, "LP Core only supported on ESP32-C6. Running in stub mode.");
