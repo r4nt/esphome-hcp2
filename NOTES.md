@@ -59,8 +59,12 @@ Integrating Rust builds into the ESPHome/PlatformIO workflow required several cu
 
 ### Static Linking (HP Mode)
 *   To allow the HP core to run the Rust logic, we needed to link `common` as a static library.
-*   *Config:* Added `crate-type = ["staticlib"]` to a wrapper crate (`hp-firmware`) and set `panic = "abort"` in `Cargo.toml` to avoid linking `libunwind` (which `no_std` lacks).
-*   *Linking:* Used `target_link_libraries` in `CMakeLists.txt` to link `libhcp2_hp_lib.a` to the component.
+*   **The "Shim Crate" Pattern:** We could not simply build `common` as a `staticlib` because it is also used as a dependency by `lp-firmware`. A `staticlib` requires a `#[panic_handler]`, but a library dependency cannot define one without causing conflicts.
+    *   *Solution:* Created a wrapper crate (`hp-firmware`).
+    *   *Role:* It depends on `common`, adds `panic-halt` (defining the handler), and configures `crate-type = ["staticlib"]`.
+    *   *Result:* This produces a clean `libhcp2_hp_lib.a` for C++ linking without polluting the `common` crate.
+*   **Config:** Set `panic = "abort"` in the workspace `Cargo.toml` `[profile.release]` to avoid `libunwind` dependency issues in `no_std`.
+*   **Linking:** Used `target_link_libraries` in `CMakeLists.txt` to link `libhcp2_hp_lib.a` to the component.
 
 ### Automation
 *   `components/hcp_bridge/build_hooks.py` hooks into the ESPHome build process.
@@ -89,13 +93,20 @@ The project now supports running the protocol logic on either the Low Power (LP)
 
 ### Implementation
 *   **`hp-firmware` crate:** A wrapper that builds `common` as a `staticlib` (`libhcp2_hp_lib.a`) and exposes `extern "C"` functions (`hcp2_protocol_init`, `dispatch`).
-*   **Linking:** The static library is cross-compiled for `riscv32imac-unknown-none-elf` by `build_hooks.py` and linked into the ESPHome component using `target_link_libraries` in `CMakeLists.txt`.
-*   **Configuration:**
-    ```yaml
-    hcp_bridge:
-      id: hcp_hub
-      core: hp  # or 'lp' (default)
-      tx_pin: 5
-      rx_pin: 4
-      flow_control_pin: 2
-    ```
+    *   **Linking:** Used `target_link_libraries` in `CMakeLists.txt` to link `libhcp2_hp_lib.a` to the component.
+    *   **Configuration:**
+        ```yaml
+        hcp_bridge:
+          id: hcp_hub
+          core: hp  # or 'lp' (default)
+          tx_pin: 5
+          rx_pin: 4
+          flow_control_pin: 2
+        ```
+
+## 8. Build System Gotchas
+
+*   **SDKConfig Requirement:** Even when using **HP Mode** (no LP binary loaded), the `sdkconfig_options` enabling the ULP coprocessor (specifically `CONFIG_ULP_COPROC_ENABLED: "y"`) must remain active.
+    *   *Reason:* The ESP-IDF build system removes `ulp_lp_core.h` from the include path if this config is disabled. Since our C++ component includes this header (even if guarded), the build will fail without it.
+*   **CMake Linking vs. Global Flags:** We must use `target_link_libraries` in the component's `CMakeLists.txt` to link the Rust static library.
+    *   *Reason:* Using global build flags (e.g., `cg.add_build_flag("-lhcp2_hp_lib")`) in Python causes the **bootloader** build to attempt linking the Rust library. The bootloader is a separate, minimal application that does not have access to the library path, causing the entire compilation to fail. Scoping it to the component ensures only the main firmware links it.
