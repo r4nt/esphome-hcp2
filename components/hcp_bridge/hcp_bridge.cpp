@@ -10,14 +10,54 @@ namespace hcp_bridge {
 
 static const char *const TAG = "hcp_bridge";
 
+// Rust FFI definitions
+extern "C" {
+    struct HcpHalC {
+        void *ctx;
+        int32_t (*read_uart)(void *ctx, uint8_t *buf, size_t len);
+        int32_t (*write_uart)(void *ctx, const uint8_t *buf, size_t len);
+        void (*set_tx_enable)(void *ctx, bool enable);
+        uint32_t (*now_ms)();
+        void (*sleep_ms)(uint32_t ms);
+    };
+
+    void hcp_run_hp_loop(const HcpHalC *hal, hcp2::SharedData *shared);
+}
+
+// Proxy implementations
+static int32_t proxy_read_uart(void *ctx, uint8_t *buf, size_t len) {
+    HCPBridge *bridge = static_cast<HCPBridge *>(ctx);
+    // Use timeout=0 for non-blocking read
+    int len_read = uart_read_bytes(UART_NUM_1, buf, len, 0);
+    return len_read;
+}
+
+static int32_t proxy_write_uart(void *ctx, const uint8_t *buf, size_t len) {
+    HCPBridge *bridge = static_cast<HCPBridge *>(ctx);
+    return uart_write_bytes(UART_NUM_1, buf, len);
+}
+
+static void proxy_set_tx_enable(void *ctx, bool enable) {
+    HCPBridge *bridge = static_cast<HCPBridge *>(ctx);
+    gpio_set_level((gpio_num_t)bridge->get_de_pin(), enable ? 1 : 0);
+}
+
+static uint32_t proxy_now_ms() {
+    return millis();
+}
+
+static void proxy_sleep_ms(uint32_t ms) {
+    delay(ms);
+}
+
+
 void HCPBridge::setup() {
   ESP_LOGCONFIG(TAG, "Setting up HCP Bridge...");
 
   if (use_lp_core_) {
-    // Shared memory is at fixed address 0x50002000 in LP RAM
-    shared_data_ = reinterpret_cast<hcp2::SharedData *>(0x50002000);
+    // Shared memory is at fixed address 0x50003000 in LP RAM
+    shared_data_ = reinterpret_cast<hcp2::SharedData *>(0x50003000);
   } else {
-    // For HP mode, allocate shared memory on the heap
     shared_data_ = new hcp2::SharedData();
   }
 
@@ -47,16 +87,14 @@ void HCPBridge::setup() {
       ESP_LOGE(TAG, "Failed to run LP core: %d", err);
     }
   } else {
-    // Fallback if configured for LP but flag is false (unlikely with new static config)
-    ESP_LOGW(TAG, "LP Mode compiled but runtime flag false?");
+     // Fallback if configured for LP but flag is false
   }
 #else
-  // HP Mode (No ULP support compiled in)
+  // HP Mode
   ESP_LOGI(TAG, "Starting HP Core Task...");
   #if CONFIG_FREERTOS_UNICORE
   xTaskCreate(hp_core_task, "hcp_hp_task", 4096, this, 5, &hp_task_handle_);
   #else
-    // On dual-core chips, pin to Core 1 (APP_CPU) to avoid interference from WiFi/BT on Core 0
     xTaskCreatePinnedToCore(hp_core_task, "hcp_hp_task", 4096, this, 5, &hp_task_handle_, 1);
   #endif
   
@@ -85,52 +123,25 @@ void HCPBridge::hp_core_task(void *arg) {
   gpio_set_direction((gpio_num_t)self->de_pin_, GPIO_MODE_OUTPUT);
   gpio_set_level((gpio_num_t)self->de_pin_, 0);
 
-  // Initialize Protocol (Rust)
-  uint8_t proto_mem[128]; // Enough for Hcp2Protocol
-  hcp2::hcp2_protocol_init(proto_mem);
+  // Prepare HAL struct
+  HcpHalC hal_c = {
+      .ctx = self,
+      .read_uart = proxy_read_uart,
+      .write_uart = proxy_write_uart,
+      .set_tx_enable = proxy_set_tx_enable,
+      .now_ms = proxy_now_ms,
+      .sleep_ms = proxy_sleep_ms,
+  };
 
-  uint8_t rx_buf[128];
-  uint8_t tx_buf[128];
-  int rx_len = 0;
+  // Transfer control to Rust
+  hcp_run_hp_loop(&hal_c, self->shared_data_);
   
-  while (true) {
-    // Read UART with short timeout
-    int len = uart_read_bytes(UART_NUM_1, rx_buf + rx_len, 1, 10 / portTICK_PERIOD_MS);
-    if (len > 0) {
-      rx_len += len;
-    } else {
-      // Timeout - dispatch frame if we have data
-      if (rx_len > 0) {
-        if (self->try_lock()) {
-          self->shared_data_->owner_flag = hcp2::OWNER_LP; // HP acting as LP logic
-          
-          uintptr_t tx_len = hcp2::hcp2_protocol_dispatch(proto_mem, rx_buf, rx_len, tx_buf, sizeof(tx_buf), self->shared_data_, millis());
-          
-          if (tx_len > 0) {
-            gpio_set_level((gpio_num_t)self->de_pin_, 1);
-            uart_write_bytes(UART_NUM_1, (const char*)tx_buf, tx_len);
-            uart_wait_tx_done(UART_NUM_1, 100); // Wait for flush
-            esp_rom_delay_us(500); // Extra safety
-            gpio_set_level((gpio_num_t)self->de_pin_, 0);
-          }
-          
-          self->shared_data_->owner_flag = hcp2::OWNER_FREE;
-          self->unlock();
-        }
-        rx_len = 0;
-      }
-    }
-    
-    // Prevent buffer overflow
-    if (rx_len >= sizeof(rx_buf)) rx_len = 0;
-  }
+  // Should never return
+  vTaskDelete(NULL);
 }
 
 void HCPBridge::loop() {
-  // We don't necessarily need to lock for reading single bytes, 
-  // but for consistent multi-byte reads (ts) it's safer.
-  // However, LP core updates frequently, so we don't want to block HP loop.
-  // We'll just read directly since it's most efficient and mostly safe for single fields.
+    // ... same as before
 }
 
 void HCPBridge::dump_config() {
@@ -151,7 +162,6 @@ void HCPBridge::unlock() {
 }
 
 void HCPBridge::set_command(uint8_t command) {
-  // Busy wait briefly for lock
   for (int i = 0; i < 100; i++) {
     if (try_lock()) {
       shared_data_->command_request = command;

@@ -30,6 +30,8 @@ class HCPBridge : public Component {
     de_pin_ = de;
   }
 
+  int get_de_pin() const { return de_pin_; }
+
   const hcp2::SharedData *get_data() const { return shared_data_; }
 
  protected:
