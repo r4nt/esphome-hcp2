@@ -4,6 +4,7 @@ scratch/
 *.swp
 *~
 .DS_Store
+*.a
 
 # Rust
 target/
@@ -22,5 +23,6 @@ components/hcp_bridge/shared_data.h
 
 components/hcp_bridge/hcp2-lp.bin
 components/hcp_bridge/hcp2_lp_bin.h
+components/hcp_bridge/libhcp2_hp_lib.a
 
 
