@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_ID, CONF_TX_PIN, CONF_RX_PIN
-from .build_hooks import build_rust_firmware
+from .build_hooks import is_lp_mode, build_lp_firmware, build_hp_firmware
 from esphome.core import CORE
 
 CONF_CORE = "core"
@@ -19,9 +19,6 @@ CONFIG_SCHEMA = cv.Schema({
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
-    # Trigger the automated build of the Rust firmware (only needed for LP mode, but good to ensure logic is valid)
-    is_lp_build = build_rust_firmware(config)
-
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     
@@ -32,14 +29,11 @@ async def to_code(config):
         config[CONF_FLOW_CONTROL_PIN]
     ))
     
-    # Add compile-time flag for LP mode to guard ULP includes
-    if config[CONF_CORE] == "lp":
+    # Trigger the appropriate Rust build
+    if is_lp_mode(config):
+        build_lp_firmware(config)
         cg.add_build_flag("-DUSE_HCP_LP_MODE")
-    
-    # Add ESP-IDF dependencies
-    cg.add_build_flag("-DUSE_ESP32_VARIANT_ESP32C6")
-
-    # Link the HP static library
-    if not is_lp_build: 
+    else:
+        build_hp_firmware(config)
         cg.add_build_flag("-L" + str(CORE.relative_build_path("hp-firmware")))
         cg.add_build_flag("-lhcp2_hp_lib")
