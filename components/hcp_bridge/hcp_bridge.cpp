@@ -3,7 +3,7 @@
 #include "esphome/core/hal.h"
 
 #ifdef USE_HCP_LP_MODE
-extern uint8_t *lp_firmware_bin;
+extern uint8_t lp_firmware_bin[];
 extern size_t lp_firmware_bin_size;
 #endif
 
