@@ -2,7 +2,7 @@
 
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
-#ifdef USE_HCP_HP_UART
+#ifndef USE_HCP_LP_MODE
 #include "esphome/components/uart/uart.h"
 #endif
 #include "shared_data.h"
@@ -15,7 +15,7 @@ namespace esphome {
 namespace hcp_bridge {
 
 class HCPBridge : public Component
-#ifdef USE_HCP_HP_UART
+#ifndef USE_HCP_LP_MODE
     , public uart::UARTDevice
 #endif
 {
@@ -27,29 +27,27 @@ class HCPBridge : public Component
   void set_command(uint8_t command);
   void set_target_position(uint8_t position);
   
-  void set_core_config(bool use_lp, int de) {
-    use_lp_core_ = use_lp;
+  void set_core_config(int de) {
     de_pin_ = de;
   }
 
   int get_de_pin() const { return de_pin_; }
-
   const hcp2::SharedData *get_data() const { return shared_data_; }
 
  protected:
   hcp2::SharedData *shared_data_{nullptr};
   uint32_t last_sync_ms_{0};
-  
-  bool use_lp_core_{true};
   int de_pin_{2};
   
   TaskHandle_t hp_task_handle_{nullptr};
   
   bool try_lock();
   void unlock();
-  
+ 
+#ifndef USE_HCP_LP_MODE
   void start_hp_task();
   static void hp_core_task(void *arg);
+#endif
 };
 
 }  // namespace hcp_bridge

@@ -34,13 +34,7 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     
-    # Only register as UART device in HP mode
-    if config[CONF_CORE] == 'hp':
-        await uart.register_uart_device(var, config)
-        cg.add_build_flag("-DUSE_HCP_HP_UART")
-    
     cg.add(var.set_core_config(
-        config[CONF_CORE] == "lp",
         config[CONF_FLOW_CONTROL_PIN]
     ))
     
@@ -50,5 +44,6 @@ async def to_code(config):
         cg.add_build_flag("-DUSE_HCP_LP_MODE")
     else:
         build_hp_firmware(config)
+        await uart.register_uart_device(var, config)
         cg.add_build_flag("-L" + str(CORE.relative_build_path("hp-firmware")))
         cg.add_build_flag("-lhcp2_hp_lib")
