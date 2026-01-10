@@ -40,8 +40,8 @@ pub struct TesterHalC {
 #[no_mangle]
 pub extern "C" fn hcp_tester_poll(hal: *const TesterHalC, state: *mut TesterState) {
     unsafe {
-        let physics = PHYSICS.as_mut().unwrap();
-        let fsm = FSM.as_mut().unwrap();
+        let physics = core::ptr::addr_of_mut!(PHYSICS).as_mut().unwrap().as_mut().unwrap();
+        let fsm = core::ptr::addr_of_mut!(FSM).as_mut().unwrap().as_mut().unwrap();
         let hal = &*hal;
 
         let now = (hal.now_ms)();
@@ -76,7 +76,7 @@ pub extern "C" fn hcp_tester_poll(hal: *const TesterHalC, state: *mut TesterStat
 #[no_mangle]
 pub extern "C" fn hcp_tester_set_control(target_pos: f32, toggle_light: bool) {
     unsafe {
-        if let Some(physics) = PHYSICS.as_mut() {
+        if let Some(physics) = core::ptr::addr_of_mut!(PHYSICS).as_mut().unwrap().as_mut() {
             physics.target_position = target_pos;
             if toggle_light {
                 physics.light_on = !physics.light_on;

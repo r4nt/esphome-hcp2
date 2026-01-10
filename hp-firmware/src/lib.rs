@@ -55,7 +55,7 @@ pub unsafe extern "C" fn hcp_hp_init() {
 
 #[no_mangle]
 pub unsafe extern "C" fn hcp_hp_poll(hal_ptr: *const HcpHalC, shared_ptr: *mut SharedData) {
-    if let Some(driver) = &mut DRIVER {
+    if let Some(driver) = core::ptr::addr_of_mut!(DRIVER).as_mut().unwrap().as_mut() {
         let hal_c = &*hal_ptr;
         let mut hal = HcpHalWrapper { inner: hal_c };
         let shared = &mut *shared_ptr;
