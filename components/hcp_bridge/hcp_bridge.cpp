@@ -64,7 +64,8 @@ static int32_t proxy_write_uart(void *ctx, const uint8_t *buf, size_t len) {
 
 static void proxy_set_tx_enable(void *ctx, bool enable) {
     HCPBridge *bridge = static_cast<HCPBridge *>(ctx);
-    gpio_set_level((gpio_num_t)bridge->get_de_pin(), enable ? 1 : 0);
+    if (bridge->get_de_pin())
+        bridge->get_de_pin()->digital_write(enable);
 }
 
 static uint32_t proxy_now_ms() {
@@ -115,9 +116,10 @@ void HCPBridge::setup() {
   }
 #else
   // Initialize DE pin
-  gpio_reset_pin((gpio_num_t)de_pin_);
-  gpio_set_direction((gpio_num_t)de_pin_, GPIO_MODE_OUTPUT);
-  gpio_set_level((gpio_num_t)de_pin_, 0);
+  if (de_pin_) {
+      de_pin_->setup();
+      de_pin_->digital_write(false);
+  }
 
   start_hp_task();
 #endif
@@ -175,6 +177,11 @@ void HCPBridge::loop() {
 void HCPBridge::dump_config() {
   ESP_LOGCONFIG(TAG, "HCP Bridge:");
   ESP_LOGCONFIG(TAG, "  Shared Memory Address: %p", shared_data_);
+#ifdef USE_HCP_LP_MODE
+  ESP_LOGCONFIG(TAG, "  Flow Control Pin: %d", de_pin_);
+#else
+  LOG_PIN("  Flow Control Pin: ", de_pin_);
+#endif
 }
 
 bool HCPBridge::try_lock() {

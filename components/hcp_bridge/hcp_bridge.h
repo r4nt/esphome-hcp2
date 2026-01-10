@@ -27,17 +27,30 @@ class HCPBridge : public Component
   void set_command(uint8_t command);
   void set_target_position(uint8_t position);
   
-  void set_core_config(int de) {
+#ifdef USE_HCP_LP_MODE
+  void set_flow_control_pin(int de) {
     de_pin_ = de;
   }
 
   int get_de_pin() const { return de_pin_; }
+#else
+  void set_flow_control_pin(GPIOPin *de) {
+    de_pin_ = de;
+  }
+
+  GPIOPin *get_de_pin() const { return de_pin_; }
+#endif
+
   const hcp2::SharedData *get_data() const { return shared_data_; }
 
  protected:
   hcp2::SharedData *shared_data_{nullptr};
   uint32_t last_sync_ms_{0};
+#ifdef USE_HCP_LP_MODE
   int de_pin_{2};
+#else
+  GPIOPin *de_pin_{nullptr};
+#endif
   
   TaskHandle_t hp_task_handle_{nullptr};
   
