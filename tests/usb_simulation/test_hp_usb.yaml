@@ -8,12 +8,17 @@ esp32:
   framework:
     type: esp-idf
 
-# Redirect logger to USB JTAG/Serial so it doesn't interfere with UART0
-# This allows logs to come through the same USB cable, but via a different internal "port"
-# (or simply prevents them from being sent to TX/RX pins)
 logger:
-  hardware_uart: USB_SERIAL_JTAG
   level: DEBUG
+  baud_rate: 0
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+api:
+ota:
+  - platform: esphome
 
 external_components:
   - source:
