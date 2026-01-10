@@ -20,7 +20,7 @@ def send_packet(ser, frame_hex):
     data = bytes.fromhex(frame_hex)
     crc = crc16(data)
     full_frame = data + crc
-    print(f"Master  -> ESP: {full_frame.hex().upper()}")
+    print(f"Drive   -> ESP: {full_frame.hex().upper()}")
     ser.write(full_frame)
     return full_frame
 
@@ -29,10 +29,10 @@ def read_response(ser, timeout=0.2):
     while (time.time() - start) < timeout:
         if ser.in_waiting >= 5: # Min modbus response size
             resp = ser.read(ser.in_waiting)
-            print(f"Master <-  ESP: {resp.hex().upper()}")
+            print(f"Drive  <-  ESP: {resp.hex().upper()}")
             return resp
         time.sleep(0.01)
-    print("Master <-  ESP: (Timeout - No Response)")
+    print("Drive  <-  ESP: (Timeout - No Response)")
     return None
 
 def main():

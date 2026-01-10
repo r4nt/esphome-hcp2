@@ -1,0 +1,14 @@
+[package]
+name = "hcp2-tester-firmware"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hcp2_tester_lib"
+crate-type = ["staticlib"]
+
+[dependencies]
+common = { package = "hcp2-common", path = "../common" }
+nb = "1.1.0"
+embedded-hal = "1.0.0"
+log = "0.4.20"

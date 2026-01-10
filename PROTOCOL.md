@@ -11,13 +11,13 @@ This document describes the HCP2 protocol implementation. The protocol is based 
 
 ## General Flow
 
-The communication is master-slave, where the Drive (Master) initiates all exchanges. The HCP device (Slave) responds to requests.
+The communication is Drive-Slave, where the Drive initiates all exchanges. The HCP device (Slave) responds to requests.
 
 ### 1. Bus Scan (Discovery)
 Upon startup or periodically, the Drive scans for connected devices.
 *   **Method:** Read/Write (0x17)
 *   **Target:** Address `0x02`
-*   **Read Quantity:** 5 Registers
+*   Read Quantity: 5 Registers
 *   **Action:** The device responds with identification constants (`0x0430`, `0x10FF`, `0xA845`) to announce its presence.
 
 ### 2. Status Broadcast
@@ -38,7 +38,7 @@ The Drive polls the device to check if it has any commands to execute (e.g., but
 
 The protocol uses a Modbus-like frame structure.
 
-### Request Frame (Master -> Slave)
+### Request Frame (Drive -> Slave)
 | Byte Offset | Field | Size | Description |
 | :--- | :--- | :--- | :--- |
 | 0 | Address | 1 Byte | `0x00` (Broadcast), `0x02` (HCP) |
@@ -47,7 +47,7 @@ The protocol uses a Modbus-like frame structure.
 | N-2 | CRC Low | 1 Byte | Modbus CRC16 |
 | N-1 | CRC High | 1 Byte | Modbus CRC16 |
 
-### Response Frame (Slave -> Master)
+### Response Frame (Slave -> Drive)
 | Byte Offset | Field | Size | Description |
 | :--- | :--- | :--- | :--- |
 | 0 | Address | 1 Byte | `0x02` |
@@ -60,7 +60,7 @@ The protocol uses a Modbus-like frame structure.
 ## Function Codes
 
 ### 0x10: Write Multiple Registers
-Used by the master (drive) to send status updates.
+Used by the Drive to send status updates.
 
 **Request:**
 *   Address
@@ -72,7 +72,7 @@ Used by the master (drive) to send status updates.
 *   CRC
 
 ### 0x17: Read/Write Multiple Registers
-Used by the master to read status/commands from the slave while writing synchronization data.
+Used by the Drive to read status/commands from the slave while writing synchronization data.
 
 **Request:**
 *   Address
@@ -87,10 +87,10 @@ Used by the master to read status/commands from the slave while writing synchron
 
 ## Registers and Commands
 
-### Master Write (Drive -> Device)
+### Drive Write (Drive -> Device)
 
 #### Status Update (Write Address `0x9D31`)
-The drive writes 9 registers to address `0x9D31`.
+The Drive writes 9 registers to address `0x9D31`.
 
 | Register Index | High Byte | Low Byte | Description |
 | :--- | :--- | :--- | :--- |
@@ -105,15 +105,15 @@ The drive writes 9 registers to address `0x9D31`.
 | 8 | - | - | Unknown |
 
 #### Sync/Counter (Write Address `0x9C41`)
-The drive writes to address `0x9C41`.
+The Drive writes to address `0x9C41`.
 
 | Register Index | High Byte | Low Byte | Description |
 | :--- | :--- | :--- | :--- |
 | 0 | Counter | Command Code | Sync counter and command code |
 
-### Master Read (Device -> Drive)
+### Drive Read (Device -> Drive)
 
-The drive reads from address `0x9CB9`. The device responds based on the requested quantity.
+The Drive reads from address `0x9CB9`. The device responds based on the requested quantity.
 
 #### Length 2 (Idle Poll)
 | Register Index | High Byte | Low Byte | Description |

@@ -1,10 +1,10 @@
 # HCP Tester Plan
 
-This document outlines the architecture and implementation plan for the `hcp_tester`, a device designed to simulate a Hörmann garage door motor (Drive). It acts as the **Bus Master** to drive the protocol and validate the `hcp_bridge` (which acts as the Slave).
+This document outlines the architecture and implementation plan for the `hcp_tester`, a device designed to simulate a Hörmann garage door motor (Drive). It acts as the **Bus Drive** to drive the protocol and validate the `hcp_bridge` (which acts as the Slave).
 
 ## 1. Objectives
 
-1.  **Role:** Act as the **RS485 Master** (Drive).
+1.  **Role:** Act as the **RS485 Drive**.
     *   Initiate Bus Scan.
     *   Broadcast Status updates (Position, Light).
     *   Poll the Slave (Bridge) for commands.
@@ -24,7 +24,7 @@ This document outlines the architecture and implementation plan for the `hcp_tes
 │   ├── Cargo.toml              # Defines dependencies
 │   └── src/
 │       ├── lib.rs              # FFI exports
-│       ├── master_fsm.rs       # Master Protocol State Machine (Scan -> Broadcast -> Poll)
+│       ├── drive_fsm.rs        # Drive Protocol State Machine (Scan -> Broadcast -> Poll)
 │       └── garage_physics.rs   # Simulation logic (Movement, State transitions)
 ├── components/
 │   └── hcp_tester/             # [NEW] ESPHome C++ Component
@@ -36,9 +36,9 @@ This document outlines the architecture and implementation plan for the `hcp_tes
 
 ### B. Rust Logic (`tester-firmware`)
 
-The firmware acts as the **Master**.
+The firmware acts as the **Drive**.
 
-**State Machine (`master_fsm.rs`):**
+**State Machine (`drive_fsm.rs`):**
 1.  **State: Scanning**
     *   Action: Send `Function 0x17` to Address `0x02` (Read 5 Registers).
     *   Expectation: Response with Device IDs (`0x0430`, etc.).
@@ -58,7 +58,7 @@ The firmware acts as the **Master**.
 
 ### C. C++ Component (`components/hcp_tester`)
 
-Wraps the Rust Master FSM.
+Wraps the Rust Drive FSM.
 
 **Entities:**
 *   **Cover:** "Simulated Door" (Controls the physics `target_pos` manually).
@@ -76,7 +76,7 @@ Wraps the Rust Master FSM.
 1.  **Scaffold:** Create directories and files.
 2.  **Rust Implementation:**
     *   Implement `garage_physics` struct.
-    *   Implement `master_fsm` using `common::protocol` to frame packets.
+    *   Implement `drive_fsm` using `common::protocol` to frame packets.
     *   Expose FFI.
 3.  **ESPHome Component:**
     *   Create `hcp_tester` component that drives the Rust poll loop.

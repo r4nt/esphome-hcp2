@@ -1,16 +1,16 @@
-pub(crate) const ADDRESS_BROADCAST: u8 = 0x00;
-pub(crate) const ADDRESS_HCP: u8 = 0x02;
+pub const ADDRESS_BROADCAST: u8 = 0x00;
+pub const ADDRESS_HCP: u8 = 0x02;
 
-pub(crate) const FUNC_WRITE_MULTIPLE_REGISTERS: u8 = 0x10;
-pub(crate) const FUNC_READ_WRITE_MULTIPLE_REGISTERS: u8 = 0x17;
+pub const FUNC_WRITE_MULTIPLE_REGISTERS: u8 = 0x10;
+pub const FUNC_READ_WRITE_MULTIPLE_REGISTERS: u8 = 0x17;
 
-pub(crate) const ADDR_STATUS_UPDATE: u16 = 0x9D31;
-pub(crate) const ADDR_SYNC_COUNTER: u16 = 0x9C41;
-pub(crate) const ADDR_POLL: u16 = 0x9CB9;
+pub const ADDR_STATUS_UPDATE: u16 = 0x9D31;
+pub const ADDR_SYNC_COUNTER: u16 = 0x9C41;
+pub const ADDR_POLL: u16 = 0x9CB9;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DriveState {
+pub enum DriveState {
     Stopped = 0x00,
     Opening = 0x01,
     Closing = 0x02,
@@ -36,4 +36,16 @@ impl From<u8> for DriveState {
             _ => DriveState::Stopped,
         }
     }
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DriveAction {
+    None = 0,
+    Open = 1,
+    Close = 2,
+    Stop = 3,
+    HalfOpen = 4,
+    Vent = 5,
+    ToggleLight = 6,
 }

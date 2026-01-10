@@ -3,6 +3,7 @@ members = [
     "common",
     "lp-firmware",
     "hp-firmware",
+    "tester-firmware",
 ]
 resolver = "2"
 
