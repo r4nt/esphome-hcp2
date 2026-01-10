@@ -55,6 +55,10 @@ impl HcpHal for LpHal {
         Delay.delay_ms(ms);
         self.current_ms = self.current_ms.wrapping_add(ms);
     }
+
+    fn log(&mut self, _message: &str) {
+        // No logging on LP core for now
+    }
 }
 
 #[entry]

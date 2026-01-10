@@ -16,4 +16,7 @@ pub trait HcpHal {
 
     /// Sleep for a specified duration in milliseconds.
     fn sleep_ms(&mut self, ms: u32);
+
+    /// Log a debug message.
+    fn log(&mut self, message: &str);
 }

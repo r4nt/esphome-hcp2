@@ -7,8 +7,9 @@ extern uint8_t lp_firmware_bin[];
 extern size_t lp_firmware_bin_size;
 #endif
 
-#include <driver/uart.h>
 #include <driver/gpio.h>
+#include <soc/soc_caps.h>
+#include <algorithm>
 
 namespace esphome {
 namespace hcp_bridge {
@@ -24,35 +25,65 @@ extern "C" {
         void (*set_tx_enable)(void *ctx, bool enable);
         uint32_t (*now_ms)();
         void (*sleep_ms)(uint32_t ms);
+        void (*log)(void *ctx, const uint8_t *msg, size_t len);
     };
 
-    void hcp_run_hp_loop(const HcpHalC *hal, hcp2::SharedData *shared);
+    void hcp_hp_init();
+    void hcp_hp_poll(const HcpHalC *hal, hcp2::SharedData *shared);
 }
 
 // Proxy implementations
 static int32_t proxy_read_uart(void *ctx, uint8_t *buf, size_t len) {
     HCPBridge *bridge = static_cast<HCPBridge *>(ctx);
-    // Use timeout=0 for non-blocking read
-    int len_read = uart_read_bytes(UART_NUM_1, buf, len, 0);
-    return len_read;
+    size_t i = 0;
+    while (i < len && bridge->available()) {
+        if (!bridge->read_byte(&buf[i]))
+            break;
+        i++;
+    }
+    
+    if (i > 0) {
+        // Log RX data
+        ESP_LOG_BUFFER_HEX_LEVEL("hcp_bridge:RX", buf, i, ESPHOME_LOG_LEVEL_DEBUG);
+    }
+    
+    return i;
 }
 
 static int32_t proxy_write_uart(void *ctx, const uint8_t *buf, size_t len) {
     HCPBridge *bridge = static_cast<HCPBridge *>(ctx);
-    return uart_write_bytes(UART_NUM_1, buf, len);
+    
+    // Log TX data
+    ESP_LOG_BUFFER_HEX_LEVEL("hcp_bridge:TX", buf, len, ESPHOME_LOG_LEVEL_DEBUG);
+    
+    bridge->write_array(buf, len);
+    return len;
 }
-
 static void proxy_set_tx_enable(void *ctx, bool enable) {
     HCPBridge *bridge = static_cast<HCPBridge *>(ctx);
     gpio_set_level((gpio_num_t)bridge->get_de_pin(), enable ? 1 : 0);
 }
 
 static uint32_t proxy_now_ms() {
+
     return millis();
+
 }
 
+
+
 static void proxy_sleep_ms(uint32_t ms) {
+
     delay(ms);
+
+}
+
+
+
+static void proxy_log(void *ctx, const uint8_t *msg, size_t len) {
+
+
+    ESP_LOGD(TAG, "Rust: %.*s", len, (const char *)msg);
 }
 
 
@@ -73,8 +104,12 @@ void HCPBridge::setup() {
     shared_data_->last_update_ts = 0;
     unlock();
   }
+  
+  // Initialize DE pin
+  gpio_reset_pin((gpio_num_t)de_pin_);
+  gpio_set_direction((gpio_num_t)de_pin_, GPIO_MODE_OUTPUT);
+  gpio_set_level((gpio_num_t)de_pin_, 0);
 
-#ifdef USE_ESP32_VARIANT_ESP32C6
 #if defined(USE_HCP_LP_MODE)
   if (use_lp_core_) {
     ESP_LOGI(TAG, "Starting LP Core...");
@@ -92,42 +127,40 @@ void HCPBridge::setup() {
       ESP_LOGE(TAG, "Failed to run LP core: %d", err);
     }
   } else {
-     // Fallback if configured for LP but flag is false
+     // Fallback: Init HP Rust logic and start task
+     start_hp_task();
   }
 #else
   // HP Mode
+  start_hp_task();
+#endif
+}
+
+void HCPBridge::start_hp_task() {
   ESP_LOGI(TAG, "Starting HP Core Task...");
-  #if CONFIG_FREERTOS_UNICORE
-  xTaskCreate(hp_core_task, "hcp_hp_task", 4096, this, 5, &hp_task_handle_);
-  #else
-    xTaskCreatePinnedToCore(hp_core_task, "hcp_hp_task", 4096, this, 5, &hp_task_handle_, 1);
-  #endif
+  BaseType_t res;
   
-#endif
-#else
-  ESP_LOGW(TAG, "LP Core only supported on ESP32-C6. Running in stub mode.");
-#endif
+  #if defined(SOC_CPU_CORES_NUM) && (SOC_CPU_CORES_NUM == 1)
+    // Single core environment
+    res = xTaskCreate(hp_core_task, "hcp_hp_task", 4096, this, 5, &hp_task_handle_);
+  #else
+    // Dual core environment - Pin to Core 1 (App Core)
+    res = xTaskCreatePinnedToCore(hp_core_task, "hcp_hp_task", 4096, this, 5, &hp_task_handle_, 1);
+  #endif
+
+  if (res != pdPASS) {
+      ESP_LOGE(TAG, "Failed to create HP Core Task! Error: %d", res);
+  } else {
+      ESP_LOGI(TAG, "HP Core Task launched successfully");
+  }
 }
 
 void HCPBridge::hp_core_task(void *arg) {
   HCPBridge *self = static_cast<HCPBridge *>(arg);
   
-  uart_config_t uart_config = {
-      .baud_rate = 57600,
-      .data_bits = UART_DATA_8_BITS,
-      .parity = UART_PARITY_EVEN,
-      .stop_bits = UART_STOP_BITS_1,
-      .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-      .source_clk = UART_SCLK_DEFAULT,
-  };
-  uart_driver_install(UART_NUM_1, 256, 0, 0, NULL, 0);
-  uart_param_config(UART_NUM_1, &uart_config);
-  uart_set_pin(UART_NUM_1, self->tx_pin_, self->rx_pin_, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+  // Initialize Rust driver
+  hcp_hp_init();
   
-  gpio_reset_pin((gpio_num_t)self->de_pin_);
-  gpio_set_direction((gpio_num_t)self->de_pin_, GPIO_MODE_OUTPUT);
-  gpio_set_level((gpio_num_t)self->de_pin_, 0);
-
   // Prepare HAL struct
   HcpHalC hal_c = {
       .ctx = self,
@@ -136,17 +169,29 @@ void HCPBridge::hp_core_task(void *arg) {
       .set_tx_enable = proxy_set_tx_enable,
       .now_ms = proxy_now_ms,
       .sleep_ms = proxy_sleep_ms,
+      .log = proxy_log,
   };
 
-  // Transfer control to Rust
-  hcp_run_hp_loop(&hal_c, self->shared_data_);
+  ESP_LOGI(TAG, "Entering HP Core Loop...");
   
-  // Should never return
+  while (true) {
+      hcp_hp_poll(&hal_c, self->shared_data_);
+      delay(1); // Yield/Sleep to prevent WDT
+  }
+  
   vTaskDelete(NULL);
 }
 
 void HCPBridge::loop() {
-    // ... same as before
+    // Existing update/sync logic...
+    uint32_t now = millis();
+    if (now - last_sync_ms_ > 1000) {
+        last_sync_ms_ = now;
+        if (try_lock()) {
+            // ... (keep existing sync logic if any)
+            unlock();
+        }
+    }
 }
 
 void HCPBridge::dump_config() {

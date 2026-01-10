@@ -11,6 +11,8 @@ esp32:
 logger:
   level: DEBUG
   baud_rate: 0
+  hardware_uart: UART1
+
 
 wifi:
   ssid: !secret wifi_ssid
@@ -25,13 +27,37 @@ external_components:
       type: local
       path: ../../components
 
+#uart:
+#  tx_pin: GPIO16
+#  rx_pin: GPIO17
+#  baud_rate: 57600
+#  data_bits: 8
+#  parity: even
+#  stop_bits: 1
+#  debug:
+#    direction: BOTH
+#    sequence:
+#      - lambda: UARTDebug::log_hex(direction, bytes, ' ');
+
+
 hcp_bridge:
   id: hcp_hub
   core: hp
-  # Default UART0 pins for ESP32-C6 (Connected to the USB-Serial bridge chip)
-  tx_pin: 1
-  rx_pin: 3
+  uart_id: usb_data_port
   flow_control_pin: 2 # Dummy for USB test
+
+tinyusb:
+
+usb_cdc_acm:
+  id: usb_data_port
+
+uart:
+  - id: u0
+    tx_pin: 16
+    rx_pin: 17
+    baud_rate: 57600
+    stop_bits: 1
+    parity: EVEN
 
 cover:
   - platform: hcp_bridge

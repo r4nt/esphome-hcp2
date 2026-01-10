@@ -41,7 +41,8 @@ def main():
     baud = 57600
     
     try:
-        ser = serial.Serial(port, baud, timeout=0.05)
+        ser = serial.Serial(port, baud, parity=serial.PARITY_EVEN, timeout=0.05)
+        print(ser)
     except Exception as e:
         print(f"Error: Could not open port {port}: {e}")
         return
