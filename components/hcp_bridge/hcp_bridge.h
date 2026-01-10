@@ -2,7 +2,9 @@
 
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
+#ifdef USE_HCP_HP_UART
 #include "esphome/components/uart/uart.h"
+#endif
 #include "shared_data.h"
 
 #if defined(USE_ESP32_VARIANT_ESP32C6) && defined(USE_HCP_LP_MODE)
@@ -12,7 +14,11 @@
 namespace esphome {
 namespace hcp_bridge {
 
-class HCPBridge : public Component, public uart::UARTDevice {
+class HCPBridge : public Component
+#ifdef USE_HCP_HP_UART
+    , public uart::UARTDevice
+#endif
+{
  public:
   void setup() override;
   void loop() override;

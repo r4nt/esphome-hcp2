@@ -28,13 +28,16 @@ extern "C" {
         void (*log)(void *ctx, const uint8_t *msg, size_t len);
     };
 
+#ifndef USE_HCP_LP_MODE
     void hcp_hp_init();
     void hcp_hp_poll(const HcpHalC *hal, hcp2::SharedData *shared);
+#endif
 }
 
 // Proxy implementations
 static int32_t proxy_read_uart(void *ctx, uint8_t *buf, size_t len) {
     HCPBridge *bridge = static_cast<HCPBridge *>(ctx);
+#ifdef USE_HCP_HP_UART
     size_t i = 0;
     while (i < len && bridge->available()) {
         if (!bridge->read_byte(&buf[i]))
@@ -44,20 +47,26 @@ static int32_t proxy_read_uart(void *ctx, uint8_t *buf, size_t len) {
     
     if (i > 0) {
         // Log RX data
-        ESP_LOG_BUFFER_HEX_LEVEL("hcp_bridge:RX", buf, i, ESPHOME_LOG_LEVEL_DEBUG);
+        ESP_LOG_BUFFER_HEX_LEVEL("hcp_bridge:RX", buf, i, ESP_LOG_DEBUG);
     }
     
     return i;
+#else
+    return 0;
+#endif
 }
 
 static int32_t proxy_write_uart(void *ctx, const uint8_t *buf, size_t len) {
     HCPBridge *bridge = static_cast<HCPBridge *>(ctx);
-    
+#ifdef USE_HCP_HP_UART
     // Log TX data
-    ESP_LOG_BUFFER_HEX_LEVEL("hcp_bridge:TX", buf, len, ESPHOME_LOG_LEVEL_DEBUG);
+    ESP_LOG_BUFFER_HEX_LEVEL("hcp_bridge:TX", buf, len, ESP_LOG_DEBUG);
     
     bridge->write_array(buf, len);
     return len;
+#else
+    return 0;
+#endif
 }
 static void proxy_set_tx_enable(void *ctx, bool enable) {
     HCPBridge *bridge = static_cast<HCPBridge *>(ctx);
@@ -128,15 +137,20 @@ void HCPBridge::setup() {
     }
   } else {
      // Fallback: Init HP Rust logic and start task
+#ifndef USE_HCP_LP_MODE
      start_hp_task();
+#endif
   }
 #else
   // HP Mode
+#ifndef USE_HCP_LP_MODE
   start_hp_task();
+#endif
 #endif
 }
 
 void HCPBridge::start_hp_task() {
+#ifndef USE_HCP_LP_MODE
   ESP_LOGI(TAG, "Starting HP Core Task...");
   BaseType_t res;
   
@@ -153,9 +167,11 @@ void HCPBridge::start_hp_task() {
   } else {
       ESP_LOGI(TAG, "HP Core Task launched successfully");
   }
+#endif
 }
 
 void HCPBridge::hp_core_task(void *arg) {
+#ifndef USE_HCP_LP_MODE
   HCPBridge *self = static_cast<HCPBridge *>(arg);
   
   // Initialize Rust driver
@@ -178,6 +194,7 @@ void HCPBridge::hp_core_task(void *arg) {
       hcp_hp_poll(&hal_c, self->shared_data_);
       delay(1); // Yield/Sleep to prevent WDT
   }
+#endif
   
   vTaskDelete(NULL);
 }

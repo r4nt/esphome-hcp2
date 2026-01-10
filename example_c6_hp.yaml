@@ -41,9 +41,16 @@ ota:
 hcp_bridge:
   id: hcp_hub
   core: hp
-  tx_pin: 22
-  rx_pin: 23
+  uart_id: u0
   flow_control_pin: 2
+
+uart:
+  - id: u0
+    tx_pin: 22
+    rx_pin: 23
+    baud_rate: 57600
+    stop_bits: 1
+    parity: EVEN
 
 cover:
   - platform: hcp_bridge

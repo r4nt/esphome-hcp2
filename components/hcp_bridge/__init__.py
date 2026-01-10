@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import uart
-from esphome.const import CONF_ID, CONF_FLOW_CONTROL_PIN
+from esphome.const import CONF_ID, CONF_FLOW_CONTROL_PIN, CONF_TX_PIN, CONF_RX_PIN
 from .build_hooks import is_lp_mode, build_lp_firmware, build_hp_firmware
 from esphome.core import CORE
 
@@ -10,16 +10,34 @@ CONF_CORE = "core"
 hcp_bridge_ns = cg.esphome_ns.namespace("hcp_bridge")
 HCPBridge = hcp_bridge_ns.class_("HCPBridge", cg.Component, uart.UARTDevice)
 
-CONFIG_SCHEMA = cv.Schema({
+# Base fields common to both
+BASE_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(HCPBridge),
-    cv.Optional(CONF_CORE, default="lp"): cv.one_of("lp", "hp", lower=True),
     cv.Optional(CONF_FLOW_CONTROL_PIN, default=2): cv.int_,
-}).extend(uart.UART_DEVICE_SCHEMA).extend(cv.COMPONENT_SCHEMA)
+}).extend(cv.COMPONENT_SCHEMA)
+
+# LP Mode Schema: Allows pins, no UART component required
+LP_SCHEMA = BASE_SCHEMA.extend({
+    cv.Optional(CONF_CORE, default="lp"): cv.one_of("lp", lower=True),
+    cv.Optional(CONF_TX_PIN): cv.int_,
+    cv.Optional(CONF_RX_PIN): cv.int_,
+})
+
+# HP Mode Schema: Requires UART component
+HP_SCHEMA = BASE_SCHEMA.extend({
+    cv.Required(CONF_CORE): cv.one_of("hp", lower=True),
+}).extend(uart.UART_DEVICE_SCHEMA)
+
+CONFIG_SCHEMA = cv.Any(LP_SCHEMA, HP_SCHEMA)
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
-    await uart.register_uart_device(var, config)
+    
+    # Only register as UART device in HP mode
+    if config[CONF_CORE] == 'hp':
+        await uart.register_uart_device(var, config)
+        cg.add_build_flag("-DUSE_HCP_HP_UART")
     
     cg.add(var.set_core_config(
         config[CONF_CORE] == "lp",
