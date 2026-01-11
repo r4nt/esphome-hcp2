@@ -9,6 +9,15 @@ pub enum RegisterType {
     Unknown,
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum DispatchError {
+    FrameTooShort,
+    InvalidAddress,
+    InvalidFunction,
+    CrcMismatch,
+    ParsingError,
+}
+
 pub struct Hcp2Protocol {
     counter: u8,
     command_code: u8,
@@ -24,13 +33,6 @@ impl Hcp2Protocol {
             last_action: CMD_NONE,
             action_start_ts: 0,
         }
-    }
-
-    /// Validates if a frame is addressed to us or broadcast, and if the function code is supported.
-    pub fn validate_frame(&self, address: u8, function: u8) -> bool {
-        let valid_addr = address == ADDRESS_HCP || address == ADDRESS_BROADCAST;
-        let valid_func = function == FUNC_WRITE_MULTIPLE_REGISTERS || function == FUNC_READ_WRITE_MULTIPLE_REGISTERS;
-        valid_addr && valid_func
     }
 
     pub(crate) fn identify_request(&self, address: u16) -> RegisterType {
@@ -94,37 +96,37 @@ impl Hcp2Protocol {
     }
 
     /// Dispatches a raw byte frame to the appropriate handler.
-    /// 
-    /// Note: We are implementing manual frame parsing here because 'rmodbus' (v0.9)
-    /// does not natively support Function Code 0x17 (Read/Write Multiple Registers),
-    /// which is central to the HCP2 protocol.
-    pub fn dispatch_frame(&mut self, frame: &[u8], out_buffer: &mut [u8], shared: &mut SharedData, millis: u32) -> usize {
+    pub fn dispatch_frame(&mut self, frame: &[u8], out_buffer: &mut [u8], shared: &mut SharedData, millis: u32) -> Result<usize, DispatchError> {
         if frame.len() < 4 {
-            return 0;
+            return Err(DispatchError::FrameTooShort);
         }
 
         let address = frame[0];
         let func = frame[1];
 
-        if !self.validate_frame(address, func) {
-            return 0;
+        if address != ADDRESS_HCP && address != ADDRESS_BROADCAST {
+            return Err(DispatchError::InvalidAddress);
         }
 
-        // Validate CRC (Modbus RTU: last 2 bytes)
+        if func != FUNC_WRITE_MULTIPLE_REGISTERS && func != FUNC_READ_WRITE_MULTIPLE_REGISTERS {
+            return Err(DispatchError::InvalidFunction);
+        }
+
+        // Validate CRC (Modbus RTU: last 2 bytes are LSB, MSB)
         let len = frame.len();
-        let received_crc = ((frame[len - 2] as u16) << 8) | (frame[len - 1] as u16);
+        let received_crc = (frame[len - 2] as u16) | ((frame[len - 1] as u16) << 8);
         let computed_crc = crc16(&frame[..len - 2]);
         if received_crc != computed_crc {
-            return 0;
+            return Err(DispatchError::CrcMismatch);
         }
 
         match func {
             FUNC_WRITE_MULTIPLE_REGISTERS => {
-                if frame.len() < 9 { return 0; }
+                if frame.len() < 9 { return Err(DispatchError::ParsingError); }
                 let start_addr = ((frame[2] as u16) << 8) | (frame[3] as u16);
                 let qty = ((frame[4] as u16) << 8) | (frame[5] as u16);
                 let byte_count = frame[6] as usize;
-                if frame.len() < 9 + byte_count { return 0; }
+                if frame.len() < 9 + byte_count { return Err(DispatchError::ParsingError); }
                 
                 let mut regs = [0u16; 16];
                 for i in 0..(byte_count / 2).min(16) {
@@ -136,17 +138,17 @@ impl Hcp2Protocol {
                     RegisterType::SyncCounter => self.handle_sync_counter(&regs[..qty as usize]),
                     _ => {}
                 }
-                0 
+                Ok(0) 
             }
             FUNC_READ_WRITE_MULTIPLE_REGISTERS => {
-                if frame.len() < 13 { return 0; }
+                if frame.len() < 13 { return Err(DispatchError::ParsingError); }
                 let rd_addr = ((frame[2] as u16) << 8) | (frame[3] as u16);
                 let rd_qty = ((frame[4] as u16) << 8) | (frame[5] as u16);
                 let wr_addr = ((frame[6] as u16) << 8) | (frame[7] as u16);
                 let wr_qty = ((frame[8] as u16) << 8) | (frame[9] as u16);
                 let byte_count = frame[10] as usize;
                 
-                if frame.len() < 13 + byte_count { return 0; }
+                if frame.len() < 13 + byte_count { return Err(DispatchError::ParsingError); }
 
                 let mut wr_regs = [0u16; 16];
                 for i in 0..(byte_count / 2).min(16) {
@@ -161,7 +163,7 @@ impl Hcp2Protocol {
                     let resp_regs = self.prepare_poll_response(rd_qty, shared, millis);
                     let resp_byte_count = (rd_qty * 2) as u8;
                     
-                    if out_buffer.len() < 5 + resp_byte_count as usize { return 0; }
+                    if out_buffer.len() < 5 + resp_byte_count as usize { return Err(DispatchError::ParsingError); }
 
                     out_buffer[0] = ADDRESS_HCP;
                     out_buffer[1] = FUNC_READ_WRITE_MULTIPLE_REGISTERS;
@@ -174,11 +176,11 @@ impl Hcp2Protocol {
                     let crc = crc16(&out_buffer[..out_len]);
                     out_buffer[out_len] = (crc & 0xFF) as u8;
                     out_buffer[out_len + 1] = (crc >> 8) as u8;
-                    return out_len + 2;
+                    return Ok(out_len + 2);
                 }
-                0
+                Ok(0)
             }
-            _ => 0
+            _ => Err(DispatchError::InvalidFunction)
         }
     }
 
@@ -221,7 +223,7 @@ fn crc16(data: &[u8]) -> u16 {
             }
         }
     }
-    (crc << 8) | (crc >> 8)
+    crc
 }
 
 #[cfg(test)]
@@ -235,10 +237,17 @@ mod tests {
         let mut shared = SharedData::default();
 
         // Verify constants usage via validation
-        assert!(proto.validate_frame(ADDRESS_HCP, FUNC_WRITE_MULTIPLE_REGISTERS));
-        assert!(proto.validate_frame(ADDRESS_BROADCAST, FUNC_READ_WRITE_MULTIPLE_REGISTERS));
-        assert!(!proto.validate_frame(0x99, FUNC_WRITE_MULTIPLE_REGISTERS)); // Invalid addr
-        assert!(!proto.validate_frame(ADDRESS_HCP, 0x88)); // Invalid func
+        // NOTE: validate_frame is now internal/inline. Testing dispatch directly.
+        
+        let mut buf = [0u8; 32];
+        
+        // Invalid Address
+        let invalid_addr = [0x99, FUNC_WRITE_MULTIPLE_REGISTERS, 0x00, 0x00];
+        assert_eq!(proto.dispatch_frame(&invalid_addr, &mut buf, &mut shared, 0), Err(DispatchError::InvalidAddress));
+
+        // Invalid Func
+        let invalid_func = [ADDRESS_HCP, 0x88, 0x00, 0x00];
+        assert_eq!(proto.dispatch_frame(&invalid_func, &mut buf, &mut shared, 0), Err(DispatchError::InvalidFunction));
 
         // Example from PROTOCOL.md: 0x1635 (target 0x16, current 0x35), state 0x01 (Opening), light bit 0x10
         let regs1 = [0x0000, 0x1635, 0x0100, 0x0000, 0x0000, 0x0000, 0x0010, 0x0000, 0x0000];
@@ -325,7 +334,9 @@ mod tests {
         let mut shared = SharedData::default();
         let request = [0x02, 0x17, 0x9C, 0xB9, 0x00, 0x05, 0x9C, 0x41, 0x00, 0x03, 0x06, 0x00, 0x02, 0x00, 0x00, 0x01, 0x02, 0xF8, 0x35];
         let mut response = [0u8; 32];
-        let len = proto.dispatch_frame(&request, &mut response, &mut shared, 0);
+        let result = proto.dispatch_frame(&request, &mut response, &mut shared, 0);
+        assert!(result.is_ok());
+        let len = result.unwrap();
         assert!(len > 0);
         assert_eq!(response[0], 0x02);
         assert_eq!(response[1], 0x17);
@@ -338,6 +349,6 @@ mod tests {
     fn test_crc() {
         let request = [0x02, 0x17, 0x9C, 0xB9, 0x00, 0x05, 0x9C, 0x41, 0x00, 0x03, 0x06, 0x00, 0x02, 0x00, 0x00, 0x01, 0x02];
         let crc = crc16(&request);
-        assert_eq!(crc, 0xF835); 
+        assert_eq!(crc, 0x35F8); 
     }
 }

@@ -1,4 +1,4 @@
-.PHONY: all esp32c6-lp esp32c6-hp esp32s3-hp tester-s3 tester-c6 test clean
+.PHONY: all esp32c6-lp esp32c6-hp esp32s3-hp tester-s3 tester-c6 test rust-test clean
 
 export PATH := $(HOME)/.cargo/bin:/home/klimek/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin:$(PATH)
 
@@ -22,6 +22,10 @@ tester-c6:
 clean:
 	rm -rf .esphome
 
-test:
+rust-test:
+	cd common && cargo test
+	cd tester-firmware && cargo test --features std
+
+test: rust-test
 	rm -rf .esphome
 	$(MAKE) all

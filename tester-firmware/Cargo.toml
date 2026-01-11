@@ -5,10 +5,14 @@ edition = "2021"
 
 [lib]
 name = "hcp2_tester_lib"
-crate-type = ["staticlib"]
+crate-type = ["rlib", "staticlib"]
+
+[features]
+std = []
 
 [dependencies]
-common = { package = "hcp2-common", path = "../common" }
+hcp2-common = { path = "../common" }
 nb = "1.1.0"
 embedded-hal = "1.0.0"
 log = "0.4.20"
+

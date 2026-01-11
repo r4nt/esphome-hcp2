@@ -1,4 +1,4 @@
-use common::registers::*;
+use hcp2_common::registers::*;
 use crate::garage_physics::GaragePhysics;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -103,21 +103,34 @@ impl DriveFsm {
         // Simple validation
         if frame.len() < 4 { return; }
         
+        // Verify CRC
+        let len = frame.len();
+        let received_crc = ((frame[len - 1] as u16) << 8) | (frame[len - 2] as u16);
+        let calculated_crc = self.crc16(&frame[..len - 2]);
+        if received_crc != calculated_crc {
+            return;
+        }
+
         // Parse response based on state
         match self.state {
             DriveFsmState::Scan => {
                 // If we got a valid response, check if the address matches what we just scanned.
                 // Or simply assume if we got ANY valid Modbus response, it's the device.
                 
-                // Note: In poll(), we already decremented scan_address for the *next* cycle.
-                // So the address that just responded is (self.scan_address + 1) handling wrap around.
-                // Let's recover the actual address from the frame itself to be safe.
                 let addr = frame[0];
-                self.scan_address = addr; // Lock onto this address
+                let func = frame[1];
 
-                self.state = DriveFsmState::Broadcast;
+                // Validate Address (cannot be broadcast) and Function (must be 0x17)
+                if addr != 0x00 && func == FUNC_READ_WRITE_MULTIPLE_REGISTERS {
+                    self.scan_address = addr; // Lock onto this address
+                    self.state = DriveFsmState::Broadcast;
+                }
             },
             DriveFsmState::Poll => {
+                let addr = frame[0];
+                // Ensure response is from the device we are polling
+                if addr != self.scan_address { return; }
+
                 // Expecting function 0x17 response
                 if frame[1] != FUNC_READ_WRITE_MULTIPLE_REGISTERS { return; }
                 let byte_count = frame[2] as usize;
@@ -213,6 +226,6 @@ impl DriveFsm {
                 }
             }
         }
-        (crc << 8) | (crc >> 8)
+        crc
     }
 }

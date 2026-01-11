@@ -1,5 +1,5 @@
 use crate::hal::HcpHal;
-use crate::protocol::Hcp2Protocol;
+use crate::protocol::{Hcp2Protocol, DispatchError};
 use crate::shared::{SharedData, OWNER_LP, OWNER_FREE};
 
 pub struct Hcp2Driver {
@@ -43,25 +43,36 @@ impl Hcp2Driver {
             if shared.read_owner() != 1 { 
                 shared.write_owner(OWNER_LP); // Using OWNER_LP (2) as "Active Driver" ID
 
-                let tx_len = self.protocol.dispatch_frame(
+                match self.protocol.dispatch_frame(
                     &self.rx_buf[..self.rx_idx], 
                     &mut self.tx_buf, 
                     shared, 
                     current_ms
-                );
-
-                if tx_len > 0 {
-                    // Switch to TX
-                    hal.set_tx_enable(true);
-                    hal.uart_write(&self.tx_buf[..tx_len]);
-                    
-                    // Wait for transmission to finish is handled by HAL or caller?
-                    // Usually blocking write is simplest.
-                    // We add a small safety delay to ensure UART FIFO is empty before dropping DE
-                    hal.sleep_ms(2); 
-                    
-                    // Switch back to RX
-                    hal.set_tx_enable(false);
+                ) {
+                    Ok(tx_len) => {
+                        if tx_len > 0 {
+                            // Switch to TX
+                            hal.set_tx_enable(true);
+                            hal.uart_write(&self.tx_buf[..tx_len]);
+                            
+                            // Wait for transmission to finish is handled by HAL or caller?
+                            // Usually blocking write is simplest.
+                            // We add a small safety delay to ensure UART FIFO is empty before dropping DE
+                            hal.sleep_ms(2); 
+                            
+                            // Switch back to RX
+                            hal.set_tx_enable(false);
+                        }
+                    },
+                    Err(e) => {
+                        match e {
+                            DispatchError::CrcMismatch => hal.log("Error: CRC Mismatch"),
+                            DispatchError::InvalidAddress => hal.log("Debug: Discarding message - Invalid Address"),
+                            DispatchError::FrameTooShort => hal.log("Error: Frame Too Short"),
+                            DispatchError::InvalidFunction => hal.log("Debug: Invalid Function Code"),
+                            DispatchError::ParsingError => hal.log("Error: Frame Parsing Failed"),
+                        }
+                    }
                 }
 
                 shared.write_owner(OWNER_FREE);

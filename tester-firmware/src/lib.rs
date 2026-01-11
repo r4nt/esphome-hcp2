@@ -1,12 +1,14 @@
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(not(feature = "std"))]
 use core::panic::PanicInfo;
 
 mod garage_physics;
 mod drive_fsm;
 
-use garage_physics::GaragePhysics;
-use drive_fsm::DriveFsm;
+pub use garage_physics::GaragePhysics;
+pub use drive_fsm::DriveFsm;
+pub use drive_fsm::DriveFsmState;
 
 // FFI Interface
 #[repr(C)]
@@ -79,21 +81,19 @@ pub extern "C" fn hcp_tester_poll(hal: *const TesterHalC, state: *mut TesterStat
         }
 
         if tx_len > 0 {
-            if fsm.state == drive_fsm::DriveFsmState::Scan {
-                // Formatting "Sending Bus Scan to XX..." requires a buffer or alloc in no_std.
-                // We'll just stick to a static message or use a minimal hex buffer if we had one.
-                // But for now, let's just log generic scan.
-                // Or better, let's update the log string slightly to indicate scanning.
+            if old_state == drive_fsm::DriveFsmState::Scan {
                 hal.log("Scanning...");
-            } else if fsm.state == drive_fsm::DriveFsmState::Poll {
+            } else if old_state == drive_fsm::DriveFsmState::Poll {
                 hal.log("Polling...");
+            } else if old_state == drive_fsm::DriveFsmState::Broadcast {
+                hal.log("Broadcasting status...");
             }
 
             (hal.set_tx_enable)(hal.ctx, true);
             (hal.write_uart)(hal.ctx, tx_buf.as_ptr(), tx_len);
             (hal.set_tx_enable)(hal.ctx, false);
             
-            if fsm.state == drive_fsm::DriveFsmState::Scan || fsm.state == drive_fsm::DriveFsmState::Poll {
+            if old_state == drive_fsm::DriveFsmState::Scan || old_state == drive_fsm::DriveFsmState::Poll {
                 hal.log("Waiting for response...");
             }
         }
@@ -120,6 +120,7 @@ pub extern "C" fn hcp_tester_set_control(target_pos: f32, toggle_light: bool) {
     }
 }
 
+#[cfg(not(feature = "std"))]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     loop {}

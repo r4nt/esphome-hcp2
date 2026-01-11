@@ -1,4 +1,4 @@
-use common::registers::{DriveState, DriveAction};
+use hcp2_common::registers::{DriveState, DriveAction};
 
 pub struct GaragePhysics {
     pub current_position: f32, // 0.0 to 200.0 (0 = Closed, 200 = Open)
