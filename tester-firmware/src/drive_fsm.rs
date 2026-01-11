@@ -13,6 +13,7 @@ pub struct DriveFsm {
     pub last_poll_ms: u32,
     pub sync_counter: u8,
     pub command_code: u8,
+    pub scan_address: u8,
 }
 
 impl DriveFsm {
@@ -22,19 +23,40 @@ impl DriveFsm {
             last_poll_ms: 0,
             sync_counter: 0,
             command_code: 0,
+            scan_address: 0xFF,
         }
     }
 
     pub fn poll(&mut self, physics: &mut GaragePhysics, now_ms: u32, out_buf: &mut [u8]) -> usize {
         match self.state {
             DriveFsmState::Scan => {
-                if now_ms - self.last_poll_ms < 1000 {
+                // Rapid scanning (e.g., 50ms per address)
+                if now_ms - self.last_poll_ms < 50 {
                     return 0;
                 }
                 self.last_poll_ms = now_ms;
+                
+                // Decrement address logic
+                // If we were at 0xFF (initial), we try 0xFF.
+                // If we fail, next time we try 0xFE... down to 0x02.
+                // If 0x02 fails, wrap back to 0xFF.
+                // However, the state machine logic here generates the packet for the *current* scan_address
+                // We'll update the address for the *next* attempt after this, or in handle_response if this fails (timeout).
+                // Actually, simplest is to just decrement here for the NEXT poll, assuming this one will timeout.
+                // If this one SUCCEEDS, handle_response will move us to Broadcast.
+                
+                let target_addr = self.scan_address;
+                
+                // Prepare next address
+                if self.scan_address <= 2 {
+                    self.scan_address = 0xFF;
+                } else {
+                    self.scan_address -= 1;
+                }
+
                 // Send Scan Request: Read 5 registers from ADDR_POLL
                 // WRITE: ADDR_SYNC_COUNTER, 3 registers
-                self.build_read_write_frame(out_buf, ADDRESS_HCP, 
+                self.build_read_write_frame(out_buf, target_addr, 
                     ADDR_POLL, 5, 
                     ADDR_SYNC_COUNTER, 3, 
                     &[0, 0, 0])
@@ -69,7 +91,7 @@ impl DriveFsm {
                 let sync_val = ((self.sync_counter as u16) << 8) | (self.command_code as u16);
 
                 // Send Poll Request: Read 8 registers
-                self.build_read_write_frame(out_buf, ADDRESS_HCP, 
+                self.build_read_write_frame(out_buf, self.scan_address, 
                     ADDR_POLL, 8, 
                     ADDR_SYNC_COUNTER, 1, 
                     &[sync_val])
@@ -84,8 +106,15 @@ impl DriveFsm {
         // Parse response based on state
         match self.state {
             DriveFsmState::Scan => {
-                // If we got a valid response, assume it's the device
-                // Could check for 0x0430, 0x10FF, 0xA845
+                // If we got a valid response, check if the address matches what we just scanned.
+                // Or simply assume if we got ANY valid Modbus response, it's the device.
+                
+                // Note: In poll(), we already decremented scan_address for the *next* cycle.
+                // So the address that just responded is (self.scan_address + 1) handling wrap around.
+                // Let's recover the actual address from the frame itself to be safe.
+                let addr = frame[0];
+                self.scan_address = addr; // Lock onto this address
+
                 self.state = DriveFsmState::Broadcast;
             },
             DriveFsmState::Poll => {

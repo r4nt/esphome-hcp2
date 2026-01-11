@@ -80,7 +80,11 @@ pub extern "C" fn hcp_tester_poll(hal: *const TesterHalC, state: *mut TesterStat
 
         if tx_len > 0 {
             if fsm.state == drive_fsm::DriveFsmState::Scan {
-                hal.log("Sending Bus Scan...");
+                // Formatting "Sending Bus Scan to XX..." requires a buffer or alloc in no_std.
+                // We'll just stick to a static message or use a minimal hex buffer if we had one.
+                // But for now, let's just log generic scan.
+                // Or better, let's update the log string slightly to indicate scanning.
+                hal.log("Scanning...");
             } else if fsm.state == drive_fsm::DriveFsmState::Poll {
                 hal.log("Polling Slave...");
             }
