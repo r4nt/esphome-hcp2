@@ -24,7 +24,7 @@ The goal was to offload the timing-sensitive HCP2 (Modbus RTU) polling loop to t
 ## 2. Protocol Implementation Details
 
 *   **Modbus RTU:** Standard Modbus RTU (57600 baud, 8E1).
-*   **Custom Parsing:** The protocol relies heavily on Function Code `0x17` (Read/Write Multiple Registers). Since common Modbus libraries (like `rmodbus`) often lack native `0x17` support in slave mode, a 100% manual frame parser was implemented in `protocol.rs`.
+*   **Custom Parsing:** The protocol relies heavily on Function Code `0x17` (Read/Write Multiple Registers). Since common Modbus libraries (like `rmodbus`) often lack native `0x17` support in receiver mode, a 100% manual frame parser was implemented in `protocol.rs`.
 *   **CRC:** Uses standard Modbus CRC16 (Polynomial `0xA001`).
 *   **Command Logic:** Buttons are simulated by sending a "Pressing" value for 500ms, followed by a "Release" value. This timing is managed by the unified `Hcp2Driver`.
 

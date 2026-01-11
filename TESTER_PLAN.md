@@ -1,13 +1,13 @@
 # HCP Tester Plan
 
-This document outlines the architecture and implementation plan for the `hcp_tester`, a device designed to simulate a Hörmann garage door motor (Drive). It acts as the **Bus Drive** to drive the protocol and validate the `hcp_bridge` (which acts as the Slave).
+This document outlines the architecture and implementation plan for the `hcp_tester`, a device designed to simulate a Hörmann garage door motor (Drive). It acts as the **Bus Drive** to drive the protocol and validate the `hcp_bridge`.
 
 ## 1. Objectives
 
 1.  **Role:** Act as the **RS485 Drive**.
     *   Initiate Bus Scan.
     *   Broadcast Status updates (Position, Light).
-    *   Poll the Slave (Bridge) for commands.
+    *   Poll the Bridge for commands.
 2.  **Simulation:** Simulate the physical mechanics of a garage door.
     *   Physics: Interpolate `current_position` towards `target_position` over time.
     *   Logic: Handle Light/Vent toggles.

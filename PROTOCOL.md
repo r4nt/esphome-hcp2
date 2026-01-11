@@ -11,7 +11,7 @@ This document describes the HCP2 protocol implementation. The protocol is based 
 
 ## General Flow
 
-The communication is Drive-Slave, where the Drive initiates all exchanges. The HCP device (Slave) responds to requests.
+The communication is Drive-Bridge, where the Drive initiates all exchanges. The HCP device (Bridge) responds to requests.
 
 ### 1. Bus Scan (Discovery)
 Upon startup or periodically, the Drive scans for connected devices.
@@ -38,7 +38,7 @@ The Drive polls the device to check if it has any commands to execute (e.g., but
 
 The protocol uses a Modbus-like frame structure.
 
-### Request Frame (Drive -> Slave)
+### Request Frame (Drive -> Bridge)
 | Byte Offset | Field | Size | Description |
 | :--- | :--- | :--- | :--- |
 | 0 | Address | 1 Byte | `0x00` (Broadcast), `0x02` (HCP) |
@@ -47,7 +47,7 @@ The protocol uses a Modbus-like frame structure.
 | N-2 | CRC Low | 1 Byte | Modbus CRC16 |
 | N-1 | CRC High | 1 Byte | Modbus CRC16 |
 
-### Response Frame (Slave -> Drive)
+### Response Frame (Bridge -> Drive)
 | Byte Offset | Field | Size | Description |
 | :--- | :--- | :--- | :--- |
 | 0 | Address | 1 Byte | `0x02` |
@@ -72,7 +72,7 @@ Used by the Drive to send status updates.
 *   CRC
 
 ### 0x17: Read/Write Multiple Registers
-Used by the Drive to read status/commands from the slave while writing synchronization data.
+Used by the Drive to read status/commands from the bridge while writing synchronization data.
 
 **Request:**
 *   Address

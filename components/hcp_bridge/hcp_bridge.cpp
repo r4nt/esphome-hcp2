@@ -55,7 +55,6 @@ static void log_hex(const char *label, const uint8_t *buf, size_t len) {
 #endif
 }
 
-static int32_t proxy_write_uart(void *ctx, const uint8_t *buf, size_t len);
 static int32_t proxy_read_uart(void *ctx, uint8_t *buf, size_t len) {
     HCPBridge *bridge = static_cast<HCPBridge *>(ctx);
     size_t i = 0;
@@ -66,10 +65,8 @@ static int32_t proxy_read_uart(void *ctx, uint8_t *buf, size_t len) {
     }
     
     if (i > 0) {
-        ESP_LOGD(TAG, "Read %d bytes from UART", i);
         log_hex("RX", buf, i);
     }
-    proxy_write_uart(ctx, (const uint8_t*)"abcdef", 4);
     
     return i;
 }
@@ -79,7 +76,6 @@ static int32_t proxy_write_uart(void *ctx, const uint8_t *buf, size_t len) {
     log_hex("TX", buf, len);
     
     bridge->write_array(buf, len);
-    ESP_LOGD(TAG, "Wrote %d bytes to UART", len);
     return len;
 }
 

@@ -86,7 +86,7 @@ pub extern "C" fn hcp_tester_poll(hal: *const TesterHalC, state: *mut TesterStat
                 // Or better, let's update the log string slightly to indicate scanning.
                 hal.log("Scanning...");
             } else if fsm.state == drive_fsm::DriveFsmState::Poll {
-                hal.log("Polling Slave...");
+                hal.log("Polling...");
             }
 
             (hal.set_tx_enable)(hal.ctx, true);
