@@ -60,4 +60,4 @@ Configurable via YAML:
 ## 6. Testing Strategy
 
 *   **Unit Tests:** `cargo test -p hcp2-common` validates logic on the host machine.
-*   **USB Simulation:** A dedicated test configuration (`tests/usb_simulation/`) allows testing the entire ESPHome component via a standard USB cable. A Python script simulates the drive, allowing verification of the UART logic and entity states without RS-485 hardware.
+*   **Hardware Tester:** A dedicated `tester-firmware` crate and `hcp_tester` ESPHome component allow a second ESP32 to act as the "Drive" (Master). This simulates the bus protocol physically over RS-485, providing the most accurate validation of timing and electrical behavior (`TESTER_PLAN.md`).

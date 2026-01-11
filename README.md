@@ -83,8 +83,20 @@ The provided example configurations include a Python script that automates the R
 
 To use this, ensure your environment has the Rust prerequisites listed above.
 
-### Running Tests
-To verify the protocol logic on your host machine:
+## Testing
+
+### Unit Tests
+To verify the protocol parsing logic on your host machine:
 ```bash
 cargo test -p hcp2-common
 ```
+
+### Hardware Tester
+For full system validation, we use a second ESP32 running the `hcp_tester` component. This device acts as the **Garage Door Drive (Master)**, simulating the protocol physically over RS-485. This verifies electrical characteristics, UART driver behavior, and precise timing.
+
+1.  **Hardware:** Two ESP32 devices (one Target, one Tester) connected via RS-485.
+2.  **Wiring:** Connect A->A, B->B, GND->GND.
+3.  **Tester Config:** Use `example_tester_s3.yaml` or `example_tester_c6.yaml`.
+4.  **Target Config:** Use any `example_*.yaml` config.
+
+See [TESTER_PLAN.md](TESTER_PLAN.md) for details.
