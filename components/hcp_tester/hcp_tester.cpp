@@ -12,6 +12,7 @@ extern "C" {
         void *ctx;
         int32_t (*read_uart)(void *ctx, uint8_t *buf, size_t len);
         int32_t (*write_uart)(void *ctx, const uint8_t *buf, size_t len);
+        void (*set_tx_enable)(void *ctx, bool enable);
         uint32_t (*now_ms)();
     };
 
@@ -31,25 +32,19 @@ static int32_t proxy_read_uart(void *ctx, uint8_t *buf, size_t len) {
     return i;
 }
 
+static void proxy_set_tx_enable(void *ctx, bool enable) {
+    HCPTester *tester = static_cast<HCPTester *>(ctx);
+    if (tester->get_flow_control_pin()) {
+        tester->get_flow_control_pin()->digital_write(enable);
+    }
+}
+
 static int32_t proxy_write_uart(void *ctx, const uint8_t *buf, size_t len) {
     HCPTester *tester = static_cast<HCPTester *>(ctx);
     
-    // Handle DE pin
-    if (tester->get_flow_control_pin()) {
-        tester->get_flow_control_pin()->digital_write(true);
-        delayMicroseconds(50); // Setup time
-    }
-
     tester->write_array(buf, len);
-    tester->flush();
+    tester->flush(); // Calls uart_wait_tx_done on ESP32 (waits for Shift Register)
 
-    if (tester->get_flow_control_pin()) {
-        // Wait for transmission... flush() usually waits for FIFO empty but not Shift Register empty.
-        // Simple delay based on baud rate (57600)
-        // 1 byte ~ 173us (10 bits). 
-        delayMicroseconds(len * 180);
-        tester->get_flow_control_pin()->digital_write(false);
-    }
     return len;
 }
 
@@ -71,6 +66,7 @@ void HCPTester::loop() {
         .ctx = this,
         .read_uart = proxy_read_uart,
         .write_uart = proxy_write_uart,
+        .set_tx_enable = proxy_set_tx_enable,
         .now_ms = proxy_now_ms,
     };
 

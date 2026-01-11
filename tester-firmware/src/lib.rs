@@ -34,6 +34,7 @@ pub struct TesterHalC {
     pub ctx: *mut core::ffi::c_void,
     pub read_uart: extern "C" fn(*mut core::ffi::c_void, *mut u8, usize) -> i32,
     pub write_uart: extern "C" fn(*mut core::ffi::c_void, *const u8, usize) -> i32,
+    pub set_tx_enable: extern "C" fn(*mut core::ffi::c_void, bool),
     pub now_ms: extern "C" fn() -> u32,
 }
 
@@ -60,7 +61,9 @@ pub extern "C" fn hcp_tester_poll(hal: *const TesterHalC, state: *mut TesterStat
         let mut tx_buf = [0u8; 64];
         let tx_len = fsm.poll(physics, now, &mut tx_buf);
         if tx_len > 0 {
+            (hal.set_tx_enable)(hal.ctx, true);
             (hal.write_uart)(hal.ctx, tx_buf.as_ptr(), tx_len);
+            (hal.set_tx_enable)(hal.ctx, false);
         }
 
         // Update State Struct for C++
