@@ -36,6 +36,25 @@ extern "C" {
 
 // Proxy implementations
 #ifndef USE_HCP_LP_MODE
+static void log_hex(const char *label, const uint8_t *buf, size_t len) {
+#if ESPHOME_LOG_LEVEL >= ESPHOME_LOG_LEVEL_DEBUG
+    if (len == 0) return;
+    const size_t MAX_BYTES_PER_LINE = 64;
+    char hex_buf[MAX_BYTES_PER_LINE * 3 + 1];
+    
+    size_t printed = 0;
+    while (printed < len) {
+        size_t chunk = std::min(len - printed, MAX_BYTES_PER_LINE);
+        for (size_t i = 0; i < chunk; i++) {
+            sprintf(hex_buf + i * 3, "%02X ", buf[printed + i]);
+        }
+        hex_buf[chunk * 3] = '\0';
+        ESP_LOGD(TAG, "%s: %s", label, hex_buf);
+        printed += chunk;
+    }
+#endif
+}
+
 static int32_t proxy_read_uart(void *ctx, uint8_t *buf, size_t len) {
     HCPBridge *bridge = static_cast<HCPBridge *>(ctx);
     size_t i = 0;
@@ -46,8 +65,7 @@ static int32_t proxy_read_uart(void *ctx, uint8_t *buf, size_t len) {
     }
     
     if (i > 0) {
-        // Log RX data
-        ESP_LOG_BUFFER_HEX_LEVEL("hcp_bridge:RX", buf, i, ESP_LOG_DEBUG);
+        log_hex("RX", buf, i);
     }
     
     return i;
@@ -55,8 +73,7 @@ static int32_t proxy_read_uart(void *ctx, uint8_t *buf, size_t len) {
 
 static int32_t proxy_write_uart(void *ctx, const uint8_t *buf, size_t len) {
     HCPBridge *bridge = static_cast<HCPBridge *>(ctx);
-    // Log TX data
-    ESP_LOG_BUFFER_HEX_LEVEL("hcp_bridge:TX", buf, len, ESP_LOG_DEBUG);
+    log_hex("TX", buf, len);
     
     bridge->write_array(buf, len);
     return len;

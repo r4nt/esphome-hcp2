@@ -36,6 +36,13 @@ pub struct TesterHalC {
     pub write_uart: extern "C" fn(*mut core::ffi::c_void, *const u8, usize) -> i32,
     pub set_tx_enable: extern "C" fn(*mut core::ffi::c_void, bool),
     pub now_ms: extern "C" fn() -> u32,
+    pub log: extern "C" fn(*mut core::ffi::c_void, *const u8, usize),
+}
+
+impl TesterHalC {
+    pub fn log(&self, message: &str) {
+        (self.log)(self.ctx, message.as_ptr(), message.len());
+    }
 }
 
 #[no_mangle]
@@ -59,11 +66,32 @@ pub extern "C" fn hcp_tester_poll(hal: *const TesterHalC, state: *mut TesterStat
 
         // Run FSM (Generate Request)
         let mut tx_buf = [0u8; 64];
+        let old_state = fsm.state;
         let tx_len = fsm.poll(physics, now, &mut tx_buf);
+        
+        if fsm.state != old_state {
+            let s = match fsm.state {
+                drive_fsm::DriveFsmState::Scan => "Transition to State: Scan",
+                drive_fsm::DriveFsmState::Broadcast => "Transition to State: Broadcast",
+                drive_fsm::DriveFsmState::Poll => "Transition to State: Poll",
+            };
+            hal.log(s);
+        }
+
         if tx_len > 0 {
+            if fsm.state == drive_fsm::DriveFsmState::Scan {
+                hal.log("Sending Bus Scan...");
+            } else if fsm.state == drive_fsm::DriveFsmState::Poll {
+                hal.log("Polling Slave...");
+            }
+
             (hal.set_tx_enable)(hal.ctx, true);
             (hal.write_uart)(hal.ctx, tx_buf.as_ptr(), tx_len);
             (hal.set_tx_enable)(hal.ctx, false);
+            
+            if fsm.state == drive_fsm::DriveFsmState::Scan || fsm.state == drive_fsm::DriveFsmState::Poll {
+                hal.log("Waiting for response...");
+            }
         }
 
         // Update State Struct for C++

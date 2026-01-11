@@ -14,11 +14,35 @@ extern "C" {
         int32_t (*write_uart)(void *ctx, const uint8_t *buf, size_t len);
         void (*set_tx_enable)(void *ctx, bool enable);
         uint32_t (*now_ms)();
+        void (*log)(void *ctx, const uint8_t *msg, size_t len);
     };
 
     void hcp_tester_init();
     void hcp_tester_poll(const TesterHalC *hal, TesterState *state);
     void hcp_tester_set_control(float target_pos, bool toggle_light);
+}
+
+// Helper to log hex buffers using ESPHome's logger
+// This ensures it respects ESPHOME_LOG_LEVEL and prints correctly to the configured sink.
+static void log_hex(const char *label, const uint8_t *buf, size_t len) {
+#if ESPHOME_LOG_LEVEL >= ESPHOME_LOG_LEVEL_DEBUG
+    if (len == 0) return;
+    // Buffer for "XX XX XX ..." (3 chars per byte + null terminator)
+    // 64 bytes max per line to avoid massive stack allocation
+    const size_t MAX_BYTES_PER_LINE = 64;
+    char hex_buf[MAX_BYTES_PER_LINE * 3 + 1];
+    
+    size_t printed = 0;
+    while (printed < len) {
+        size_t chunk = std::min(len - printed, MAX_BYTES_PER_LINE);
+        for (size_t i = 0; i < chunk; i++) {
+            sprintf(hex_buf + i * 3, "%02X ", buf[printed + i]);
+        }
+        hex_buf[chunk * 3] = '\0';
+        ESP_LOGD(TAG, "%s: %s", label, hex_buf);
+        printed += chunk;
+    }
+#endif
 }
 
 static int32_t proxy_read_uart(void *ctx, uint8_t *buf, size_t len) {
@@ -28,6 +52,9 @@ static int32_t proxy_read_uart(void *ctx, uint8_t *buf, size_t len) {
         if (!tester->read_byte(&buf[i]))
             break;
         i++;
+    }
+    if (i > 0) {
+        log_hex("RX", buf, i);
     }
     return i;
 }
@@ -42,14 +69,20 @@ static void proxy_set_tx_enable(void *ctx, bool enable) {
 static int32_t proxy_write_uart(void *ctx, const uint8_t *buf, size_t len) {
     HCPTester *tester = static_cast<HCPTester *>(ctx);
     
+    log_hex("TX", buf, len);
+    
     tester->write_array(buf, len);
-    tester->flush(); // Calls uart_wait_tx_done on ESP32 (waits for Shift Register)
+    tester->flush(); 
 
     return len;
 }
 
 static uint32_t proxy_now_ms() {
     return millis();
+}
+
+static void proxy_log(void *ctx, const uint8_t *msg, size_t len) {
+    ESP_LOGD(TAG, "Rust: %.*s", len, (const char *)msg);
 }
 
 void HCPTester::setup() {
@@ -68,6 +101,7 @@ void HCPTester::loop() {
         .write_uart = proxy_write_uart,
         .set_tx_enable = proxy_set_tx_enable,
         .now_ms = proxy_now_ms,
+        .log = proxy_log,
     };
 
     hcp_tester_poll(&hal, &state_);
@@ -89,22 +123,13 @@ void HCPTester::toggle_light() {
 // Cover Implementation
 void HCPTesterCover::setup() { }
 void HCPTesterCover::loop() {
-    // Poll state from tester component? 
-    // Or relying on update_entities call from HCPTester loop would be better, 
-    // but here we just poll the public state of the parent.
     if (tester_ == nullptr) return;
     
-    // Map 0-200 to 0.0-1.0
-    // Actually, HCP sends 0-200.
     float pos = tester_->state_.current_pos / 200.0f;
     if (this->position != pos) {
         this->position = pos;
         this->publish_state();
     }
-    
-    // State mapping
-    // Simple for now: if moving, show moving.
-    // Ideally we map DriveState enum.
 }
 
 void HCPTesterCover::dump_config() { LOG_COVER("", "HCP Tester Cover", this); }
@@ -133,7 +158,6 @@ void HCPTesterSwitch::loop() {
 void HCPTesterSwitch::dump_config() { LOG_SWITCH("", "HCP Tester Light", this); }
 
 void HCPTesterSwitch::write_state(bool state) {
-    // Only support toggling really, but let's try setting
     if (state != tester_->state_.light_on) {
         tester_->toggle_light();
     }
