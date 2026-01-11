@@ -35,13 +35,14 @@ ota:
 hcp_tester:
   id: hcp_sim
   uart_id: u0
-  flow_control_pin: 2
+  flow_control_pin: GPIO5
 
 uart:
   - id: u0
-    tx_pin: 22
-    rx_pin: 23
+    tx_pin: GPIO22
+    rx_pin: GPIO23
     baud_rate: 57600
+    data_bits: 8
     stop_bits: 1
     parity: EVEN
 
