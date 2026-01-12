@@ -1,4 +1,5 @@
 use hcp2_common::registers::*;
+use hcp2_common::hal::HcpHal;
 use crate::garage_physics::GaragePhysics;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -27,23 +28,19 @@ impl DriveProtocol {
         }
     }
 
-    pub fn poll(&mut self, physics: &mut GaragePhysics, now_ms: u32, out_buf: &mut [u8]) -> usize {
+    pub fn poll<H: HcpHal>(&mut self, hal: &mut H, physics: &mut GaragePhysics) {
+        let now_ms = hal.now_ms();
+        let mut out_buf = [0u8; 64];
+        let tx_len;
+        let mut expects_response = false;
+
         match self.state {
             DriveProtocolState::Scan => {
                 // Rapid scanning (e.g., 50ms per address)
                 if now_ms - self.last_poll_ms < 50 {
-                    return 0;
+                    return;
                 }
                 self.last_poll_ms = now_ms;
-                
-                // Decrement address logic
-                // If we were at 0xFF (initial), we try 0xFF.
-                // If we fail, next time we try 0xFE... down to 0x02.
-                // If 0x02 fails, wrap back to 0xFF.
-                // However, the state machine logic here generates the packet for the *current* scan_address
-                // We'll update the address for the *next* attempt after this, or in handle_response if this fails (timeout).
-                // Actually, simplest is to just decrement here for the NEXT poll, assuming this one will timeout.
-                // If this one SUCCEEDS, handle_response will move us to Broadcast.
                 
                 let target_addr = self.scan_address;
                 
@@ -54,16 +51,16 @@ impl DriveProtocol {
                     self.scan_address -= 1;
                 }
 
-                // Send Scan Request: Read 5 registers from ADDR_POLL
-                // WRITE: ADDR_SYNC_COUNTER, 3 registers
-                self.build_read_write_frame(out_buf, target_addr, 
+                tx_len = self.build_read_write_frame(&mut out_buf, target_addr, 
                     ADDR_POLL, 5, 
                     ADDR_SYNC_COUNTER, 3, 
-                    &[0, 0, 0])
+                    &[0, 0, 0]);
+                
+                hal.log("Scanning...");
+                expects_response = true;
             },
             DriveProtocolState::Broadcast => {
                 self.last_poll_ms = now_ms;
-                self.state = DriveProtocolState::Poll;
 
                 // Send Status Broadcast (0x10) to 0x00
                 // Reg 1: Target | Current
@@ -78,26 +75,47 @@ impl DriveProtocol {
                     0x0000, 0x0000, reg6, 0x0000, 0x0000
                 ];
                 
-                self.build_write_frame(out_buf, ADDRESS_BROADCAST, ADDR_STATUS_UPDATE, &regs)
+                tx_len = self.build_write_frame(&mut out_buf, ADDRESS_BROADCAST, ADDR_STATUS_UPDATE, &regs);
+                
+                hal.log("Broadcasting status...");
+                
+                // Transition to Poll
+                hal.log("Transition to State: Poll");
+                self.state = DriveProtocolState::Poll;
             },
             DriveProtocolState::Poll => {
                 if now_ms - self.last_poll_ms < 100 {
-                    return 0;
+                    return;
                 }
                 self.last_poll_ms = now_ms;
-                // self.state = DriveProtocolState::Broadcast; // Cycle back
 
                 self.sync_counter = self.sync_counter.wrapping_add(1);
                 let sync_val = ((self.sync_counter as u16) << 8) | (self.command_code as u16);
 
                 // Send Poll Request: Read 8 registers
-                self.build_read_write_frame(out_buf, self.scan_address, 
+                tx_len = self.build_read_write_frame(&mut out_buf, self.scan_address, 
                     ADDR_POLL, 8, 
                     ADDR_SYNC_COUNTER, 1, 
-                    &[sync_val])
+                    &[sync_val]);
+                
+                hal.log("Polling...");
+                expects_response = true;
+            }
+        }
+
+        if tx_len > 0 {
+            hal.set_tx_enable(true);
+            hal.uart_write(&out_buf[..tx_len]);
+            hal.set_tx_enable(false);
+
+            if expects_response {
+                hal.log("Waiting for response...");
             }
         }
     }
+    
+    // ... (rest of methods)
+
 
     pub fn handle_response(&mut self, frame: &[u8], physics: &mut GaragePhysics) {
         // Simple validation

@@ -5,26 +5,28 @@ use hcp2_common::hal::HcpHal;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-// --- Mock HAL for Bridge ---
-struct MockBridgeHal {
+// --- Mock HAL for Bridge & Tester ---
+struct MockHal {
     rx_queue: Rc<RefCell<Vec<u8>>>,
     tx_queue: Rc<RefCell<Vec<u8>>>,
     now: u32,
     logs: Rc<RefCell<Vec<String>>>,
+    name: String,
 }
 
-impl MockBridgeHal {
-    fn new(rx: Rc<RefCell<Vec<u8>>>, tx: Rc<RefCell<Vec<u8>>>) -> Self {
+impl MockHal {
+    fn new(rx: Rc<RefCell<Vec<u8>>>, tx: Rc<RefCell<Vec<u8>>>, name: &str) -> Self {
         Self {
             rx_queue: rx,
             tx_queue: tx,
             now: 0,
             logs: Rc::new(RefCell::new(Vec::new())),
+            name: name.to_string(),
         }
     }
 }
 
-impl HcpHal for MockBridgeHal {
+impl HcpHal for MockHal {
     fn uart_read(&mut self, buf: &mut [u8]) -> usize {
         let mut q = self.rx_queue.borrow_mut();
         let len = std::cmp::min(buf.len(), q.len());
@@ -51,7 +53,7 @@ impl HcpHal for MockBridgeHal {
 
     fn log(&mut self, message: &str) {
         self.logs.borrow_mut().push(message.to_string());
-        println!("[Bridge Log] {}", message);
+        println!("[{} Log] {}", self.name, message);
     }
 }
 
@@ -68,7 +70,12 @@ fn test_simulation_loop() {
     let mut physics = GaragePhysics::new();
     let mut protocol = DriveProtocol::new();
     
-    let mut bridge_hal = MockBridgeHal::new(bus_tester_to_bridge.clone(), bus_bridge_to_tester.clone());
+    // Tester HAL: RX=Bus2, TX=Bus1
+    let mut tester_hal = MockHal::new(bus_bridge_to_tester.clone(), bus_tester_to_bridge.clone(), "Tester");
+    
+    // Bridge HAL: RX=Bus1, TX=Bus2
+    let mut bridge_hal = MockHal::new(bus_tester_to_bridge.clone(), bus_bridge_to_tester.clone(), "Bridge");
+    
     let mut bridge_driver = Hcp2Driver::new();
     let mut shared_data = SharedData::default();
 
@@ -82,13 +89,11 @@ fn test_simulation_loop() {
     assert_eq!(protocol.state, DriveProtocolState::Scan);
 
     // Run Tester Poll (It should send a Scan Request)
-    let mut tx_buf = [0u8; 256];
-    let tx_len = protocol.poll(&mut physics, current_time, &mut tx_buf);
-    assert!(tx_len > 0, "Tester should send scan packet");
+    tester_hal.now = current_time;
+    protocol.poll(&mut tester_hal, &mut physics);
     
-    // Put packet on bus
-    bus_tester_to_bridge.borrow_mut().extend_from_slice(&tx_buf[..tx_len]);
-
+    assert!(!bus_tester_to_bridge.borrow().is_empty(), "Tester should send scan packet");
+    
     // Run Bridge Poll
     // Bridge should read packet, see it is for Address 0x02 (hopefully, or it iterates)
     // Tester scans descending from 0xFF. 
@@ -100,10 +105,11 @@ fn test_simulation_loop() {
     current_time += 55;
 
     // Re-run poll to generate 0x02 scan
-    let tx_len = protocol.poll(&mut physics, current_time, &mut tx_buf);
-    println!("DEBUG: Generated Scan Packet Len: {}", tx_len);
     bus_tester_to_bridge.borrow_mut().clear(); // Clear previous invalid scans
-    bus_tester_to_bridge.borrow_mut().extend_from_slice(&tx_buf[..tx_len]);
+    tester_hal.now = current_time;
+    protocol.poll(&mut tester_hal, &mut physics);
+    
+    assert!(!bus_tester_to_bridge.borrow().is_empty(), "Tester should send scan packet to 0x02");
 
     // Bridge Poll
     // Since Bridge is stateless regarding time mostly (except timeout), just run it.
@@ -128,13 +134,15 @@ fn test_simulation_loop() {
     println!("--- Simulation: Connected ---");
     
     // Tester should now Broadcast Status
-    let tx_len = protocol.poll(&mut physics, current_time, &mut tx_buf);
-    assert!(tx_len > 0); // Broadcast packet
-    // Bridge processes Broadcast
     bus_tester_to_bridge.borrow_mut().clear();
     bus_bridge_to_tester.borrow_mut().clear();
-    bus_tester_to_bridge.borrow_mut().extend_from_slice(&tx_buf[..tx_len]);
     
+    tester_hal.now = current_time;
+    protocol.poll(&mut tester_hal, &mut physics);
+    
+    assert!(!bus_tester_to_bridge.borrow().is_empty(), "Tester should send Broadcast packet");
+    
+    // Bridge processes Broadcast
     bridge_driver.poll(&mut bridge_hal, &mut shared_data);
     
     // Time advance for Bridge RX Timeout
@@ -148,17 +156,17 @@ fn test_simulation_loop() {
     // Tester should now POLL
     assert_eq!(protocol.state, DriveProtocolState::Poll);
     current_time += 100;
-    let tx_len = protocol.poll(&mut physics, current_time, &mut tx_buf);
-    assert!(tx_len > 0); // Poll packet
+    
+    bus_tester_to_bridge.borrow_mut().clear();
+    tester_hal.now = current_time;
+    protocol.poll(&mut tester_hal, &mut physics);
+    assert!(!bus_tester_to_bridge.borrow().is_empty(), "Tester should send Poll packet");
 
     // --- USER ACTION: OPEN DOOR ---
     println!("--- Simulation: Sending Open Command ---");
     shared_data.command_request = CMD_OPEN;
 
     // Bridge processes Poll Request
-    bus_tester_to_bridge.borrow_mut().clear();
-    bus_tester_to_bridge.borrow_mut().extend_from_slice(&tx_buf[..tx_len]);
-    
     bridge_driver.poll(&mut bridge_hal, &mut shared_data);
     
     // Modbus RTU Timeout
@@ -189,15 +197,15 @@ fn test_simulation_loop() {
     for _ in 0..50 { // 50 * 100ms = 5s
         current_time += 100;
         bridge_hal.now = current_time;
+        tester_hal.now = current_time;
         
         physics.tick(); // Move door
         
         // Full Loop
         // 1. Tester Broadcast
         if protocol.state == DriveProtocolState::Broadcast {
-            let tx_len = protocol.poll(&mut physics, current_time, &mut tx_buf);
             bus_tester_to_bridge.borrow_mut().clear();
-            bus_tester_to_bridge.borrow_mut().extend_from_slice(&tx_buf[..tx_len]);
+            protocol.poll(&mut tester_hal, &mut physics);
             
             bridge_driver.poll(&mut bridge_hal, &mut shared_data);
             // Broadcasts don't need response, but we should clear buffer/trigger timeout to process write
@@ -207,9 +215,8 @@ fn test_simulation_loop() {
         
         // 2. Tester Poll
         if protocol.state == DriveProtocolState::Poll {
-             let tx_len = protocol.poll(&mut physics, current_time, &mut tx_buf);
              bus_tester_to_bridge.borrow_mut().clear();
-             bus_tester_to_bridge.borrow_mut().extend_from_slice(&tx_buf[..tx_len]);
+             protocol.poll(&mut tester_hal, &mut physics);
              
              bus_bridge_to_tester.borrow_mut().clear();
              bridge_driver.poll(&mut bridge_hal, &mut shared_data);

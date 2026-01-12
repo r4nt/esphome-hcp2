@@ -10,6 +10,8 @@ pub use garage_physics::GaragePhysics;
 pub use drive_protocol::DriveProtocol;
 pub use drive_protocol::DriveProtocolState;
 
+use hcp2_common::hal::HcpHal;
+
 // FFI Interface
 #[repr(C)]
 pub struct TesterState {
@@ -47,56 +49,57 @@ impl TesterHalC {
     }
 }
 
+struct TesterHalWrapper<'a> {
+    inner: &'a TesterHalC,
+}
+
+impl<'a> HcpHal for TesterHalWrapper<'a> {
+    fn uart_read(&mut self, buf: &mut [u8]) -> usize {
+        let res = (self.inner.read_uart)(self.inner.ctx, buf.as_mut_ptr(), buf.len());
+        if res < 0 { 0 } else { res as usize }
+    }
+
+    fn uart_write(&mut self, buf: &[u8]) -> usize {
+        let res = (self.inner.write_uart)(self.inner.ctx, buf.as_ptr(), buf.len());
+        if res < 0 { 0 } else { res as usize }
+    }
+
+    fn set_tx_enable(&mut self, enable: bool) {
+        (self.inner.set_tx_enable)(self.inner.ctx, enable);
+    }
+
+    fn now_ms(&self) -> u32 {
+        (self.inner.now_ms)()
+    }
+
+    fn sleep_ms(&mut self, _ms: u32) {
+    }
+
+    fn log(&mut self, message: &str) {
+        (self.inner.log)(self.inner.ctx, message.as_ptr(), message.len());
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn hcp_tester_poll(hal: *const TesterHalC, state: *mut TesterState) {
     unsafe {
         let physics = core::ptr::addr_of_mut!(PHYSICS).as_mut().unwrap().as_mut().unwrap();
         let protocol = core::ptr::addr_of_mut!(PROTOCOL).as_mut().unwrap().as_mut().unwrap();
-        let hal = &*hal;
+        let hal_c = &*hal;
+        let mut hal_wrapper = TesterHalWrapper { inner: hal_c };
 
-        let now = (hal.now_ms)();
-        
         // Run Physics
         physics.tick();
 
         // Check for incoming response
         let mut rx_buf = [0u8; 64];
-        let len = (hal.read_uart)(hal.ctx, rx_buf.as_mut_ptr(), rx_buf.len());
+        let len = hal_wrapper.uart_read(&mut rx_buf);
         if len > 0 {
-            protocol.handle_response(&rx_buf[..len as usize], physics);
+            protocol.handle_response(&rx_buf[..len], physics);
         }
 
         // Run Protocol (Generate Request)
-        let mut tx_buf = [0u8; 64];
-        let old_state = protocol.state;
-        let tx_len = protocol.poll(physics, now, &mut tx_buf);
-        
-        if protocol.state != old_state {
-            let s = match protocol.state {
-                drive_protocol::DriveProtocolState::Scan => "Transition to State: Scan",
-                drive_protocol::DriveProtocolState::Broadcast => "Transition to State: Broadcast",
-                drive_protocol::DriveProtocolState::Poll => "Transition to State: Poll",
-            };
-            hal.log(s);
-        }
-
-        if tx_len > 0 {
-            if old_state == drive_protocol::DriveProtocolState::Scan {
-                hal.log("Scanning...");
-            } else if old_state == drive_protocol::DriveProtocolState::Poll {
-                hal.log("Polling...");
-            } else if old_state == drive_protocol::DriveProtocolState::Broadcast {
-                hal.log("Broadcasting status...");
-            }
-
-            (hal.set_tx_enable)(hal.ctx, true);
-            (hal.write_uart)(hal.ctx, tx_buf.as_ptr(), tx_len);
-            (hal.set_tx_enable)(hal.ctx, false);
-            
-            if old_state == drive_protocol::DriveProtocolState::Scan || old_state == drive_protocol::DriveProtocolState::Poll {
-                hal.log("Waiting for response...");
-            }
-        }
+        protocol.poll(&mut hal_wrapper, physics);
 
         // Update State Struct for C++
         if !state.is_null() {
