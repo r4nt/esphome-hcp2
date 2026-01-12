@@ -31,8 +31,6 @@ impl DriveProtocol {
     pub fn poll<H: HcpHal>(&mut self, hal: &mut H, physics: &mut GaragePhysics) {
         let now_ms = hal.now_ms();
         let mut out_buf = [0u8; 64];
-        let tx_len;
-        let mut expects_response = false;
 
         match self.state {
             DriveProtocolState::Scan => {
@@ -51,13 +49,14 @@ impl DriveProtocol {
                     self.scan_address -= 1;
                 }
 
-                tx_len = self.build_read_write_frame(&mut out_buf, target_addr, 
+                let len = self.build_read_write_frame(&mut out_buf, target_addr, 
                     ADDR_POLL, 5, 
                     ADDR_SYNC_COUNTER, 3, 
                     &[0, 0, 0]);
                 
                 hal.log("Scanning...");
-                expects_response = true;
+                self.send_frame(hal, &out_buf[..len]);
+                hal.log("Waiting for response...");
             },
             DriveProtocolState::Broadcast => {
                 self.last_poll_ms = now_ms;
@@ -75,9 +74,10 @@ impl DriveProtocol {
                     0x0000, 0x0000, reg6, 0x0000, 0x0000
                 ];
                 
-                tx_len = self.build_write_frame(&mut out_buf, ADDRESS_BROADCAST, ADDR_STATUS_UPDATE, &regs);
+                let len = self.build_write_frame(&mut out_buf, ADDRESS_BROADCAST, ADDR_STATUS_UPDATE, &regs);
                 
                 hal.log("Broadcasting status...");
+                self.send_frame(hal, &out_buf[..len]);
                 
                 // Transition to Poll
                 hal.log("Transition to State: Poll");
@@ -93,29 +93,33 @@ impl DriveProtocol {
                 let sync_val = ((self.sync_counter as u16) << 8) | (self.command_code as u16);
 
                 // Send Poll Request: Read 8 registers
-                tx_len = self.build_read_write_frame(&mut out_buf, self.scan_address, 
+                let len = self.build_read_write_frame(&mut out_buf, self.scan_address, 
                     ADDR_POLL, 8, 
                     ADDR_SYNC_COUNTER, 1, 
                     &[sync_val]);
                 
                 hal.log("Polling...");
-                expects_response = true;
-            }
-        }
-
-        if tx_len > 0 {
-            hal.set_tx_enable(true);
-            hal.uart_write(&out_buf[..tx_len]);
-            hal.set_tx_enable(false);
-
-            if expects_response {
+                self.send_frame(hal, &out_buf[..len]);
                 hal.log("Waiting for response...");
             }
         }
     }
-    
-    // ... (rest of methods)
 
+    pub fn check_rx<H: HcpHal>(&mut self, hal: &mut H, physics: &mut GaragePhysics) {
+        let mut rx_buf = [0u8; 64];
+        let len = hal.uart_read(&mut rx_buf);
+        if len > 0 {
+            self.handle_response(&rx_buf[..len], physics);
+        }
+    }
+
+    fn send_frame<H: HcpHal>(&self, hal: &mut H, frame: &[u8]) {
+        if frame.len() > 0 {
+            hal.set_tx_enable(true);
+            hal.uart_write(frame);
+            hal.set_tx_enable(false);
+        }
+    }
 
     pub fn handle_response(&mut self, frame: &[u8], physics: &mut GaragePhysics) {
         // Simple validation

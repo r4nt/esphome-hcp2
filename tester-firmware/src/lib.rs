@@ -92,11 +92,7 @@ pub extern "C" fn hcp_tester_poll(hal: *const TesterHalC, state: *mut TesterStat
         physics.tick();
 
         // Check for incoming response
-        let mut rx_buf = [0u8; 64];
-        let len = hal_wrapper.uart_read(&mut rx_buf);
-        if len > 0 {
-            protocol.handle_response(&rx_buf[..len], physics);
-        }
+        protocol.check_rx(&mut hal_wrapper, physics);
 
         // Run Protocol (Generate Request)
         protocol.poll(&mut hal_wrapper, physics);
