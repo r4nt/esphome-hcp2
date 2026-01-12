@@ -2,24 +2,24 @@ use hcp2_common::registers::*;
 use crate::garage_physics::GaragePhysics;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum DriveFsmState {
+pub enum DriveProtocolState {
     Scan,
     Broadcast,
     Poll,
 }
 
-pub struct DriveFsm {
-    pub state: DriveFsmState,
+pub struct DriveProtocol {
+    pub state: DriveProtocolState,
     pub last_poll_ms: u32,
     pub sync_counter: u8,
     pub command_code: u8,
     pub scan_address: u8,
 }
 
-impl DriveFsm {
+impl DriveProtocol {
     pub fn new() -> Self {
         Self {
-            state: DriveFsmState::Scan,
+            state: DriveProtocolState::Scan,
             last_poll_ms: 0,
             sync_counter: 0,
             command_code: 0,
@@ -29,7 +29,7 @@ impl DriveFsm {
 
     pub fn poll(&mut self, physics: &mut GaragePhysics, now_ms: u32, out_buf: &mut [u8]) -> usize {
         match self.state {
-            DriveFsmState::Scan => {
+            DriveProtocolState::Scan => {
                 // Rapid scanning (e.g., 50ms per address)
                 if now_ms - self.last_poll_ms < 50 {
                     return 0;
@@ -61,9 +61,9 @@ impl DriveFsm {
                     ADDR_SYNC_COUNTER, 3, 
                     &[0, 0, 0])
             },
-            DriveFsmState::Broadcast => {
+            DriveProtocolState::Broadcast => {
                 self.last_poll_ms = now_ms;
-                self.state = DriveFsmState::Poll;
+                self.state = DriveProtocolState::Poll;
 
                 // Send Status Broadcast (0x10) to 0x00
                 // Reg 1: Target | Current
@@ -80,12 +80,12 @@ impl DriveFsm {
                 
                 self.build_write_frame(out_buf, ADDRESS_BROADCAST, ADDR_STATUS_UPDATE, &regs)
             },
-            DriveFsmState::Poll => {
+            DriveProtocolState::Poll => {
                 if now_ms - self.last_poll_ms < 100 {
                     return 0;
                 }
                 self.last_poll_ms = now_ms;
-                // self.state = DriveFsmState::Broadcast; // Cycle back
+                // self.state = DriveProtocolState::Broadcast; // Cycle back
 
                 self.sync_counter = self.sync_counter.wrapping_add(1);
                 let sync_val = ((self.sync_counter as u16) << 8) | (self.command_code as u16);
@@ -113,7 +113,7 @@ impl DriveFsm {
 
         // Parse response based on state
         match self.state {
-            DriveFsmState::Scan => {
+            DriveProtocolState::Scan => {
                 // If we got a valid response, check if the address matches what we just scanned.
                 // Or simply assume if we got ANY valid Modbus response, it's the device.
                 
@@ -123,10 +123,10 @@ impl DriveFsm {
                 // Validate Address (cannot be broadcast) and Function (must be 0x17)
                 if addr != 0x00 && func == FUNC_READ_WRITE_MULTIPLE_REGISTERS {
                     self.scan_address = addr; // Lock onto this address
-                    self.state = DriveFsmState::Broadcast;
+                    self.state = DriveProtocolState::Broadcast;
                 }
             },
-            DriveFsmState::Poll => {
+            DriveProtocolState::Poll => {
                 let addr = frame[0];
                 // Ensure response is from the device we are polling
                 if addr != self.scan_address { return; }
@@ -146,7 +146,7 @@ impl DriveFsm {
                         physics.handle_action(action);
                     }
                 }
-                self.state = DriveFsmState::Broadcast;
+                self.state = DriveProtocolState::Broadcast;
             },
             _ => {}
         }

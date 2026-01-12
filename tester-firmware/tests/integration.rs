@@ -1,4 +1,4 @@
-use hcp2_tester_lib::{DriveFsm, DriveFsmState, GaragePhysics};
+use hcp2_tester_lib::{DriveProtocol, DriveProtocolState, GaragePhysics};
 use hcp2_common::driver::Hcp2Driver;
 use hcp2_common::shared::{SharedData, CMD_OPEN};
 use hcp2_common::hal::HcpHal;
@@ -66,7 +66,7 @@ fn test_simulation_loop() {
 
     // Instantiate Components
     let mut physics = GaragePhysics::new();
-    let mut fsm = DriveFsm::new();
+    let mut protocol = DriveProtocol::new();
     
     let mut bridge_hal = MockBridgeHal::new(bus_tester_to_bridge.clone(), bus_bridge_to_tester.clone());
     let mut bridge_driver = Hcp2Driver::new();
@@ -79,11 +79,11 @@ fn test_simulation_loop() {
     println!("--- Starting Simulation: Discovery Phase ---");
     
     // We expect the Tester to start Scanning
-    assert_eq!(fsm.state, DriveFsmState::Scan);
+    assert_eq!(protocol.state, DriveProtocolState::Scan);
 
     // Run Tester Poll (It should send a Scan Request)
     let mut tx_buf = [0u8; 256];
-    let tx_len = fsm.poll(&mut physics, current_time, &mut tx_buf);
+    let tx_len = protocol.poll(&mut physics, current_time, &mut tx_buf);
     assert!(tx_len > 0, "Tester should send scan packet");
     
     // Put packet on bus
@@ -96,11 +96,11 @@ fn test_simulation_loop() {
     // Note: Tester logic: starts 0xFF, decrements.
     // Ideally we want to fast forward to 0x02 if we don't want to wait 254 cycles.
     // Let's cheat and force Tester scan address to 0x02 so target is 0x02.
-    fsm.scan_address = 0x02; 
+    protocol.scan_address = 0x02; 
     current_time += 55;
 
     // Re-run poll to generate 0x02 scan
-    let tx_len = fsm.poll(&mut physics, current_time, &mut tx_buf);
+    let tx_len = protocol.poll(&mut physics, current_time, &mut tx_buf);
     println!("DEBUG: Generated Scan Packet Len: {}", tx_len);
     bus_tester_to_bridge.borrow_mut().clear(); // Clear previous invalid scans
     bus_tester_to_bridge.borrow_mut().extend_from_slice(&tx_buf[..tx_len]);
@@ -120,15 +120,15 @@ fn test_simulation_loop() {
     assert!(!bridge_response.is_empty(), "Bridge should respond to Scan on 0x02");
 
     // Tester Handle Response
-    fsm.handle_response(&bridge_response, &mut physics);
+    protocol.handle_response(&bridge_response, &mut physics);
     
-    assert_eq!(fsm.state, DriveFsmState::Broadcast, "Tester should transition to Broadcast after valid Scan response");
+    assert_eq!(protocol.state, DriveProtocolState::Broadcast, "Tester should transition to Broadcast after valid Scan response");
 
     // --- PHASE 2: NORMAL OPERATION & COMMAND ---
     println!("--- Simulation: Connected ---");
     
     // Tester should now Broadcast Status
-    let tx_len = fsm.poll(&mut physics, current_time, &mut tx_buf);
+    let tx_len = protocol.poll(&mut physics, current_time, &mut tx_buf);
     assert!(tx_len > 0); // Broadcast packet
     // Bridge processes Broadcast
     bus_tester_to_bridge.borrow_mut().clear();
@@ -146,9 +146,9 @@ fn test_simulation_loop() {
     assert_eq!(shared_data.current_state, 0x40); // 0x40 = Closed (from DriveState::Closed)
 
     // Tester should now POLL
-    assert_eq!(fsm.state, DriveFsmState::Poll);
+    assert_eq!(protocol.state, DriveProtocolState::Poll);
     current_time += 100;
-    let tx_len = fsm.poll(&mut physics, current_time, &mut tx_buf);
+    let tx_len = protocol.poll(&mut physics, current_time, &mut tx_buf);
     assert!(tx_len > 0); // Poll packet
 
     // --- USER ACTION: OPEN DOOR ---
@@ -171,7 +171,7 @@ fn test_simulation_loop() {
     assert!(!bridge_resp.is_empty());
     
     // Tester processes Poll Response
-    fsm.handle_response(&bridge_resp, &mut physics);
+    protocol.handle_response(&bridge_resp, &mut physics);
     
     // Verify Physics target updated
     // 0 = Closed, 200 = Open (100.0%)
@@ -194,8 +194,8 @@ fn test_simulation_loop() {
         
         // Full Loop
         // 1. Tester Broadcast
-        if fsm.state == DriveFsmState::Broadcast {
-            let tx_len = fsm.poll(&mut physics, current_time, &mut tx_buf);
+        if protocol.state == DriveProtocolState::Broadcast {
+            let tx_len = protocol.poll(&mut physics, current_time, &mut tx_buf);
             bus_tester_to_bridge.borrow_mut().clear();
             bus_tester_to_bridge.borrow_mut().extend_from_slice(&tx_buf[..tx_len]);
             
@@ -206,8 +206,8 @@ fn test_simulation_loop() {
         }
         
         // 2. Tester Poll
-        if fsm.state == DriveFsmState::Poll {
-             let tx_len = fsm.poll(&mut physics, current_time, &mut tx_buf);
+        if protocol.state == DriveProtocolState::Poll {
+             let tx_len = protocol.poll(&mut physics, current_time, &mut tx_buf);
              bus_tester_to_bridge.borrow_mut().clear();
              bus_tester_to_bridge.borrow_mut().extend_from_slice(&tx_buf[..tx_len]);
              
@@ -219,7 +219,7 @@ fn test_simulation_loop() {
              
              let resp = bus_bridge_to_tester.borrow().clone();
              if !resp.is_empty() {
-                 fsm.handle_response(&resp, &mut physics);
+                 protocol.handle_response(&resp, &mut physics);
              }
         }
     }

@@ -4,11 +4,11 @@
 use core::panic::PanicInfo;
 
 mod garage_physics;
-mod drive_fsm;
+mod drive_protocol;
 
 pub use garage_physics::GaragePhysics;
-pub use drive_fsm::DriveFsm;
-pub use drive_fsm::DriveFsmState;
+pub use drive_protocol::DriveProtocol;
+pub use drive_protocol::DriveProtocolState;
 
 // FFI Interface
 #[repr(C)]
@@ -21,13 +21,13 @@ pub struct TesterState {
 }
 
 static mut PHYSICS: Option<GaragePhysics> = None;
-static mut FSM: Option<DriveFsm> = None;
+static mut PROTOCOL: Option<DriveProtocol> = None;
 
 #[no_mangle]
 pub extern "C" fn hcp_tester_init() {
     unsafe {
         PHYSICS = Some(GaragePhysics::new());
-        FSM = Some(DriveFsm::new());
+        PROTOCOL = Some(DriveProtocol::new());
     }
 }
 
@@ -51,7 +51,7 @@ impl TesterHalC {
 pub extern "C" fn hcp_tester_poll(hal: *const TesterHalC, state: *mut TesterState) {
     unsafe {
         let physics = core::ptr::addr_of_mut!(PHYSICS).as_mut().unwrap().as_mut().unwrap();
-        let fsm = core::ptr::addr_of_mut!(FSM).as_mut().unwrap().as_mut().unwrap();
+        let protocol = core::ptr::addr_of_mut!(PROTOCOL).as_mut().unwrap().as_mut().unwrap();
         let hal = &*hal;
 
         let now = (hal.now_ms)();
@@ -63,29 +63,29 @@ pub extern "C" fn hcp_tester_poll(hal: *const TesterHalC, state: *mut TesterStat
         let mut rx_buf = [0u8; 64];
         let len = (hal.read_uart)(hal.ctx, rx_buf.as_mut_ptr(), rx_buf.len());
         if len > 0 {
-            fsm.handle_response(&rx_buf[..len as usize], physics);
+            protocol.handle_response(&rx_buf[..len as usize], physics);
         }
 
-        // Run FSM (Generate Request)
+        // Run Protocol (Generate Request)
         let mut tx_buf = [0u8; 64];
-        let old_state = fsm.state;
-        let tx_len = fsm.poll(physics, now, &mut tx_buf);
+        let old_state = protocol.state;
+        let tx_len = protocol.poll(physics, now, &mut tx_buf);
         
-        if fsm.state != old_state {
-            let s = match fsm.state {
-                drive_fsm::DriveFsmState::Scan => "Transition to State: Scan",
-                drive_fsm::DriveFsmState::Broadcast => "Transition to State: Broadcast",
-                drive_fsm::DriveFsmState::Poll => "Transition to State: Poll",
+        if protocol.state != old_state {
+            let s = match protocol.state {
+                drive_protocol::DriveProtocolState::Scan => "Transition to State: Scan",
+                drive_protocol::DriveProtocolState::Broadcast => "Transition to State: Broadcast",
+                drive_protocol::DriveProtocolState::Poll => "Transition to State: Poll",
             };
             hal.log(s);
         }
 
         if tx_len > 0 {
-            if old_state == drive_fsm::DriveFsmState::Scan {
+            if old_state == drive_protocol::DriveProtocolState::Scan {
                 hal.log("Scanning...");
-            } else if old_state == drive_fsm::DriveFsmState::Poll {
+            } else if old_state == drive_protocol::DriveProtocolState::Poll {
                 hal.log("Polling...");
-            } else if old_state == drive_fsm::DriveFsmState::Broadcast {
+            } else if old_state == drive_protocol::DriveProtocolState::Broadcast {
                 hal.log("Broadcasting status...");
             }
 
@@ -93,7 +93,7 @@ pub extern "C" fn hcp_tester_poll(hal: *const TesterHalC, state: *mut TesterStat
             (hal.write_uart)(hal.ctx, tx_buf.as_ptr(), tx_len);
             (hal.set_tx_enable)(hal.ctx, false);
             
-            if old_state == drive_fsm::DriveFsmState::Scan || old_state == drive_fsm::DriveFsmState::Poll {
+            if old_state == drive_protocol::DriveProtocolState::Scan || old_state == drive_protocol::DriveProtocolState::Poll {
                 hal.log("Waiting for response...");
             }
         }
