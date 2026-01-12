@@ -332,17 +332,33 @@ mod tests {
     fn test_dispatch_frame_busscan() {
         let mut proto = Hcp2Protocol::new();
         let mut shared = SharedData::default();
-        let request = [0x02, 0x17, 0x9C, 0xB9, 0x00, 0x05, 0x9C, 0x41, 0x00, 0x03, 0x06, 0x00, 0x02, 0x00, 0x00, 0x01, 0x02, 0xF8, 0x35];
+        // Byte sequence for a valid bus scan request
+        let request = [
+            0x02, 0x17, 0x9C, 0xB9, 0x00, 0x05, 0x9C, 0x41, 0x00, 0x03, 
+            0x06, 0x00, 0x02, 0x00, 0x00, 0x01, 0x02, 0xF8, 0x35
+        ];
         let mut response = [0u8; 32];
+        
+        // Note: We use 0 as current time for the test
         let result = proto.dispatch_frame(&request, &mut response, &mut shared, 0);
-        assert!(result.is_ok());
+        
+        assert!(result.is_ok(), "Bus scan should be parsed successfully");
         let len = result.unwrap();
-        assert!(len > 0);
-        assert_eq!(response[0], 0x02);
-        assert_eq!(response[1], 0x17);
-        assert_eq!(response[2], 0x0A);
+        assert!(len > 0, "Response should be generated");
+        
+        // Check identifying features of the response (Bus Scan Response)
+        assert_eq!(response[0], ADDRESS_HCP);
+        assert_eq!(response[1], FUNC_READ_WRITE_MULTIPLE_REGISTERS);
+        assert_eq!(response[2], 10, "Response should contain 5 registers (10 bytes)");
+        
+        // Device ID constants check (0x0430, 0x10FF, 0xA845)
+        // Offset 3 is start of data
         assert_eq!(response[7], 0x04);
         assert_eq!(response[8], 0x30);
+        assert_eq!(response[9], 0x10);
+        assert_eq!(response[10], 0xFF);
+        assert_eq!(response[11], 0xA8);
+        assert_eq!(response[12], 0x45);
     }
 
     #[test]
